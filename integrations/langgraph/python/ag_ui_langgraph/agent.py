@@ -14,6 +14,7 @@ except ImportError:
 from ag_ui.core import (
     CustomEvent,
     EventType,
+    Interrupt,
     MessagesSnapshotEvent,
     RawEvent,
     RunAgentInput,
@@ -110,6 +111,16 @@ class LangGraphAgent:
 
         return event
 
+    def _get_interrupt_reason(self, interrupts: list) -> Optional[str]:
+        """Extract a reason string from LangGraph interrupts."""
+        if not interrupts:
+            return None
+        # LangGraph interrupts have a value that may contain reason info
+        interrupt = interrupts[0]
+        if hasattr(interrupt, "value") and isinstance(interrupt.value, dict):
+            return interrupt.value.get("reason", "human_approval")
+        return "human_approval"
+
     async def run(self, input: RunAgentInput) -> AsyncGenerator[str, None]:
         forwarded_props = {}
         if hasattr(input, "forwarded_props") and input.forwarded_props:
@@ -148,7 +159,12 @@ class LangGraphAgent:
         }
 
         agent_state = await self.graph.aget_state(config)
-        resume_input = forwarded_props.get("command", {}).get("resume", None)
+        # Support both new input.resume field and legacy forwardedProps.command.resume
+        resume_input = None
+        if input.resume and input.resume.payload is not None:
+            resume_input = input.resume.payload
+        elif forwarded_props:
+            resume_input = forwarded_props.get("command", {}).get("resume", None)
 
         if (
             resume_input is None
@@ -302,13 +318,36 @@ class LangGraphAgent:
         for ev in self.handle_node_change(None):
             yield ev
 
-        yield self._dispatch_event(
-            RunFinishedEvent(
-                type=EventType.RUN_FINISHED,
-                thread_id=thread_id,
-                run_id=self.active_run["id"],
+        # Emit RunFinishedEvent with interrupt-aware fields
+        if interrupts:
+            # Run is paused waiting for human input
+            interrupt_data = interrupts[0]
+            yield self._dispatch_event(
+                RunFinishedEvent(
+                    type=EventType.RUN_FINISHED,
+                    thread_id=thread_id,
+                    run_id=self.active_run["id"],
+                    outcome="interrupt",
+                    interrupt=Interrupt(
+                        id=str(uuid.uuid4()),
+                        reason=self._get_interrupt_reason(interrupts),
+                        payload=dump_json_safe(interrupt_data.value)
+                        if hasattr(interrupt_data, "value")
+                        else None,
+                    ),
+                )
             )
-        )
+        else:
+            # Run completed successfully
+            yield self._dispatch_event(
+                RunFinishedEvent(
+                    type=EventType.RUN_FINISHED,
+                    thread_id=thread_id,
+                    run_id=self.active_run["id"],
+                    outcome="success",
+                    result=self.get_state_snapshot(state_values),
+                )
+            )
         # Reset active run to how it was before the stream started
         self.active_run = INITIAL_ACTIVE_RUN
 
@@ -364,6 +403,7 @@ class LangGraphAgent:
                 )
             )
 
+            # Keep CustomEvent emission for backward compatibility
             for interrupt in interrupts:
                 events_to_dispatch.append(
                     CustomEvent(
@@ -374,11 +414,21 @@ class LangGraphAgent:
                     )
                 )
 
+            # Emit RunFinishedEvent with interrupt-aware fields
+            interrupt_data = interrupts[0] if interrupts else None
             events_to_dispatch.append(
                 RunFinishedEvent(
                     type=EventType.RUN_FINISHED,
                     thread_id=thread_id,
                     run_id=self.active_run["id"],
+                    outcome="interrupt",
+                    interrupt=Interrupt(
+                        id=str(uuid.uuid4()),
+                        reason=self._get_interrupt_reason(interrupts),
+                        payload=dump_json_safe(interrupt_data.value)
+                        if interrupt_data and hasattr(interrupt_data, "value")
+                        else None,
+                    ),
                 )
             )
             return {

@@ -782,5 +782,136 @@ class TestBaseTypes(unittest.TestCase):
         )
 
 
+class TestResumeTypes(unittest.TestCase):
+    """Test suite for Resume type and RunAgentInput with resume"""
+
+    def test_resume_class_creation(self):
+        """Test creating a Resume instance"""
+        from ag_ui.core.types import Resume
+
+        resume = Resume(
+            interrupt_id="int-abc123",
+            payload={"approved": True, "modifications": {"batchSize": 10}},
+        )
+        self.assertEqual(resume.interrupt_id, "int-abc123")
+        self.assertEqual(resume.payload["approved"], True)
+        self.assertEqual(resume.payload["modifications"]["batchSize"], 10)
+
+    def test_resume_serialization_camel_case(self):
+        """Test Resume serialization uses camelCase"""
+        from ag_ui.core.types import Resume
+
+        resume = Resume(
+            interrupt_id="int-123",
+            payload={"approved": False},
+        )
+        serialized = resume.model_dump(by_alias=True)
+        self.assertIn("interruptId", serialized)
+        self.assertEqual(serialized["interruptId"], "int-123")
+        self.assertIn("payload", serialized)
+
+    def test_resume_minimal(self):
+        """Test Resume with minimal fields"""
+        from ag_ui.core.types import Resume
+
+        resume = Resume()
+        self.assertIsNone(resume.interrupt_id)
+        self.assertIsNone(resume.payload)
+
+    def test_resume_only_payload(self):
+        """Test Resume with only payload"""
+        from ag_ui.core.types import Resume
+
+        resume = Resume(payload={"data": "value"})
+        self.assertIsNone(resume.interrupt_id)
+        self.assertEqual(resume.payload, {"data": "value"})
+
+    def test_run_agent_input_with_resume(self):
+        """Test RunAgentInput with resume field"""
+        from ag_ui.core.types import Resume
+
+        resume = Resume(
+            interrupt_id="int-abc123",
+            payload={"approved": True},
+        )
+
+        input_data = {
+            "threadId": "thread_1",
+            "runId": "run_2",
+            "state": {},
+            "messages": [],
+            "tools": [],
+            "context": [],
+            "forwardedProps": {},
+            "resume": resume.model_dump(),
+        }
+
+        run_input = RunAgentInput.model_validate(input_data)
+        self.assertEqual(run_input.resume.interrupt_id, "int-abc123")
+        self.assertEqual(run_input.resume.payload, {"approved": True})
+
+    def test_run_agent_input_without_resume_backward_compat(self):
+        """Test RunAgentInput without resume (backward compatibility)"""
+        input_data = {
+            "threadId": "thread_1",
+            "runId": "run_1",
+            "state": {},
+            "messages": [],
+            "tools": [],
+            "context": [],
+            "forwardedProps": {},
+        }
+
+        run_input = RunAgentInput.model_validate(input_data)
+        self.assertIsNone(run_input.resume)
+
+    def test_run_agent_input_resume_json_serialization(self):
+        """Test RunAgentInput with resume JSON serialization uses camelCase"""
+        from ag_ui.core.types import Resume
+
+        resume = Resume(
+            interrupt_id="int-xyz",
+            payload={"approved": True},
+        )
+
+        run_input = RunAgentInput(
+            thread_id="thread_1",
+            run_id="run_2",
+            state={},
+            messages=[],
+            tools=[],
+            context=[],
+            forwarded_props={},
+            resume=resume,
+        )
+
+        # Serialize to JSON string
+        json_str = run_input.model_dump_json(by_alias=True)
+
+        # Verify camelCase is used
+        self.assertIn("interruptId", json_str)
+        self.assertIn("threadId", json_str)
+        self.assertIn("runId", json_str)
+
+    def test_resume_roundtrip(self):
+        """Test Resume serialization and deserialization roundtrip"""
+        from ag_ui.core.types import Resume
+
+        original = Resume(
+            interrupt_id="int-roundtrip",
+            payload={"complex": {"nested": "data"}},
+        )
+
+        # Serialize
+        json_str = original.model_dump_json(by_alias=True)
+
+        # Deserialize
+        deserialized = Resume.model_validate_json(json_str)
+
+        # Verify
+        self.assertEqual(deserialized.interrupt_id, original.interrupt_id)
+        self.assertEqual(deserialized.payload, original.payload)
+
+
 if __name__ == "__main__":
     unittest.main()

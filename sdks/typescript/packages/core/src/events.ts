@@ -187,11 +187,21 @@ export const RunStartedEventSchema = BaseEventSchema.extend({
   input: RunAgentInputSchema.optional(),
 });
 
+export const RunFinishedOutcomeSchema = z.enum(["success", "interrupt"]);
+
+export const InterruptSchema = z.object({
+  id: z.string().optional(),
+  reason: z.string().optional(),
+  payload: z.any().optional(),
+});
+
 export const RunFinishedEventSchema = BaseEventSchema.extend({
   type: z.literal(EventType.RUN_FINISHED),
   threadId: z.string(),
   runId: z.string(),
+  outcome: RunFinishedOutcomeSchema.optional(),
   result: z.any().optional(),
+  interrupt: InterruptSchema.optional(),
 });
 
 export const RunErrorEventSchema = BaseEventSchema.extend({
@@ -264,6 +274,8 @@ export type ActivityDeltaEvent = z.infer<typeof ActivityDeltaEventSchema>;
 export type RawEvent = z.infer<typeof RawEventSchema>;
 export type CustomEvent = z.infer<typeof CustomEventSchema>;
 export type RunStartedEvent = z.infer<typeof RunStartedEventSchema>;
+export type RunFinishedOutcome = z.infer<typeof RunFinishedOutcomeSchema>;
+export type Interrupt = z.infer<typeof InterruptSchema>;
 export type RunFinishedEvent = z.infer<typeof RunFinishedEventSchema>;
 export type RunErrorEvent = z.infer<typeof RunErrorEventSchema>;
 export type StepStartedEvent = z.infer<typeof StepStartedEventSchema>;

@@ -190,6 +190,15 @@ class Tool(ConfiguredBaseModel):
     parameters: Any  # JSON Schema for the tool parameters
 
 
+class Resume(ConfiguredBaseModel):
+    """
+    Resume channel for continuing a suspended run.
+    """
+
+    interrupt_id: Optional[str] = None
+    payload: Optional[Any] = None
+
+
 class RunAgentInput(ConfiguredBaseModel):
     """
     Input for running an agent.
@@ -203,6 +212,7 @@ class RunAgentInput(ConfiguredBaseModel):
     tools: List[Tool]
     context: List[Context]
     forwarded_props: Any
+    resume: Optional[Resume] = None
 
 
 # State can be any type

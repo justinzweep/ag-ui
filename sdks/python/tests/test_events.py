@@ -732,5 +732,134 @@ class TestEvents(unittest.TestCase):
         self.assertEqual(deserialized.delta, text)
 
 
+class TestInterruptLifecycle(unittest.TestCase):
+    """Test suite for interrupt-aware run lifecycle events"""
+
+    def test_run_finished_with_success_outcome(self):
+        """Test RunFinishedEvent with outcome: success and result"""
+        event = RunFinishedEvent(
+            thread_id="thread_1",
+            run_id="run_1",
+            outcome="success",
+            result={"data": "completed"},
+        )
+        self.assertEqual(event.type, EventType.RUN_FINISHED)
+        self.assertEqual(event.outcome, "success")
+        self.assertEqual(event.result, {"data": "completed"})
+        self.assertIsNone(event.interrupt)
+
+        # Test serialization
+        serialized = event.model_dump(by_alias=True)
+        self.assertEqual(serialized["outcome"], "success")
+        self.assertEqual(serialized["result"], {"data": "completed"})
+
+    def test_run_finished_with_interrupt_outcome(self):
+        """Test RunFinishedEvent with outcome: interrupt and interrupt object"""
+        from ag_ui.core.events import Interrupt
+
+        interrupt = Interrupt(
+            id="int-abc123",
+            reason="human_approval",
+            payload={
+                "proposal": {
+                    "tool": "sendEmail",
+                    "args": {"to": "a@b.com", "subject": "Hi"},
+                }
+            },
+        )
+
+        event = RunFinishedEvent(
+            thread_id="thread_1",
+            run_id="run_1",
+            outcome="interrupt",
+            interrupt=interrupt,
+        )
+        self.assertEqual(event.type, EventType.RUN_FINISHED)
+        self.assertEqual(event.outcome, "interrupt")
+        self.assertEqual(event.interrupt.id, "int-abc123")
+        self.assertEqual(event.interrupt.reason, "human_approval")
+        self.assertIsNone(event.result)
+
+        # Test serialization
+        serialized = event.model_dump(by_alias=True)
+        self.assertEqual(serialized["outcome"], "interrupt")
+        self.assertEqual(serialized["interrupt"]["id"], "int-abc123")
+        self.assertEqual(serialized["interrupt"]["reason"], "human_approval")
+
+    def test_run_finished_without_outcome_backward_compat(self):
+        """Test RunFinishedEvent without outcome (backward compatibility)"""
+        event = RunFinishedEvent(
+            thread_id="thread_1",
+            run_id="run_1",
+            result={"data": "completed"},
+        )
+        self.assertEqual(event.type, EventType.RUN_FINISHED)
+        self.assertIsNone(event.outcome)
+        self.assertIsNone(event.interrupt)
+        self.assertEqual(event.result, {"data": "completed"})
+
+    def test_interrupt_class(self):
+        """Test Interrupt class creation and serialization"""
+        from ag_ui.core.events import Interrupt
+
+        interrupt = Interrupt(
+            id="int-123",
+            reason="database_modification",
+            payload={
+                "action": "DELETE",
+                "table": "users",
+                "affectedRows": 42,
+            },
+        )
+        self.assertEqual(interrupt.id, "int-123")
+        self.assertEqual(interrupt.reason, "database_modification")
+        self.assertEqual(interrupt.payload["affectedRows"], 42)
+
+        # Test serialization uses camelCase
+        serialized = interrupt.model_dump(by_alias=True)
+        self.assertIn("id", serialized)
+        self.assertIn("reason", serialized)
+        self.assertIn("payload", serialized)
+
+    def test_interrupt_minimal(self):
+        """Test Interrupt with minimal fields"""
+        from ag_ui.core.events import Interrupt
+
+        interrupt = Interrupt()
+        self.assertIsNone(interrupt.id)
+        self.assertIsNone(interrupt.reason)
+        self.assertIsNone(interrupt.payload)
+
+    def test_run_finished_serialization_roundtrip(self):
+        """Test RunFinishedEvent serialization and deserialization"""
+        from ag_ui.core.events import Interrupt
+
+        interrupt = Interrupt(
+            id="int-xyz",
+            reason="human_approval",
+            payload={"approved": True},
+        )
+
+        event = RunFinishedEvent(
+            thread_id="t1",
+            run_id="r1",
+            outcome="interrupt",
+            interrupt=interrupt,
+        )
+
+        # Serialize to JSON
+        json_str = event.model_dump_json(by_alias=True)
+
+        # Deserialize
+        event_adapter = TypeAdapter(Event)
+        deserialized = event_adapter.validate_json(json_str)
+
+        # Verify round-trip
+        self.assertEqual(deserialized.thread_id, "t1")
+        self.assertEqual(deserialized.run_id, "r1")
+        self.assertEqual(deserialized.outcome, "interrupt")
+        self.assertEqual(deserialized.interrupt.id, "int-xyz")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -12,6 +12,9 @@ from .types import ConfiguredBaseModel, Message, RunAgentInput, State
 # Text messages can have any role except "tool"
 TextMessageRole = Literal["developer", "system", "assistant", "user"]
 
+# Run finished outcome
+RunFinishedOutcome = Literal["success", "interrupt"]
+
 
 class EventType(str, Enum):
     """
@@ -289,6 +292,16 @@ class RunStartedEvent(BaseEvent):
     input: Optional[RunAgentInput] = None
 
 
+class Interrupt(ConfiguredBaseModel):
+    """
+    Details about an interrupt that paused execution.
+    """
+
+    id: Optional[str] = None
+    reason: Optional[str] = None
+    payload: Optional[Any] = None
+
+
 class RunFinishedEvent(BaseEvent):
     """
     Event indicating that a run has finished.
@@ -297,7 +310,9 @@ class RunFinishedEvent(BaseEvent):
     type: Literal[EventType.RUN_FINISHED] = EventType.RUN_FINISHED  # pyright: ignore[reportIncompatibleVariableOverride]
     thread_id: str
     run_id: str
+    outcome: Optional[RunFinishedOutcome] = None
     result: Optional[Any] = None
+    interrupt: Optional[Interrupt] = None
 
 
 class RunErrorEvent(BaseEvent):

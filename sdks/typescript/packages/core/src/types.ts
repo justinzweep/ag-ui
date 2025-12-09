@@ -134,6 +134,11 @@ export const ToolSchema = z.object({
   parameters: z.any(), // JSON Schema for the tool parameters
 });
 
+export const ResumeSchema = z.object({
+  interruptId: z.string().optional(),
+  payload: z.any().optional(),
+});
+
 export const RunAgentInputSchema = z.object({
   threadId: z.string(),
   runId: z.string(),
@@ -143,6 +148,7 @@ export const RunAgentInputSchema = z.object({
   tools: z.array(ToolSchema),
   context: z.array(ContextSchema),
   forwardedProps: z.any(),
+  resume: ResumeSchema.optional(),
 });
 
 export const StateSchema = z.any();
@@ -162,6 +168,7 @@ export type ReasoningMessage = z.infer<typeof ReasoningMessageSchema>;
 export type Message = z.infer<typeof MessageSchema>;
 export type Context = z.infer<typeof ContextSchema>;
 export type Tool = z.infer<typeof ToolSchema>;
+export type Resume = z.infer<typeof ResumeSchema>;
 export type RunAgentInput = z.infer<typeof RunAgentInputSchema>;
 export type State = z.infer<typeof StateSchema>;
 export type Role = z.infer<typeof RoleSchema>;
