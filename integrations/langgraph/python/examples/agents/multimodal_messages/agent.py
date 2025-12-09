@@ -17,11 +17,14 @@ from langgraph.graph import StateGraph, END, START
 from langgraph.graph import MessagesState
 from langgraph.types import Command
 
+
 class AgentState(MessagesState):
     """
     State of our graph.
     """
+
     tools: List[Any]
+
 
 async def vision_chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
     """
@@ -56,18 +59,17 @@ async def vision_chat_node(state: AgentState, config: Optional[RunnableConfig] =
 
     # 4. Run the model with multimodal messages
     # The messages may contain both text and images
-    response = await model_with_tools.ainvoke([
-        system_message,
-        *state["messages"],
-    ], config)
+    response = await model_with_tools.ainvoke(
+        [
+            system_message,
+            *state["messages"],
+        ],
+        config,
+    )
 
     # 5. Return the response
-    return Command(
-        goto=END,
-        update={
-            "messages": response
-        }
-    )
+    return Command(goto=END, update={"messages": response})
+
 
 # Define a new graph
 workflow = StateGraph(AgentState)
@@ -84,6 +86,7 @@ is_fast_api = os.environ.get("LANGGRAPH_FAST_API", "false").lower() == "true"
 # Compile the graph
 if is_fast_api:
     from langgraph.checkpoint.memory import MemorySaver
+
     memory = MemorySaver()
     graph = workflow.compile(checkpointer=memory)
 else:

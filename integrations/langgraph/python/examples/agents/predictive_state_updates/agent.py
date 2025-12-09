@@ -16,8 +16,9 @@ from langgraph.graph import MessagesState
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
 
+
 @tool
-def write_document_local(document: str): # pylint: disable=unused-argument
+def write_document_local(document: str):  # pylint: disable=unused-argument
     """
     Write a document. Use markdown formatting to format the document.
     It's good to format the document extensively so it's easy to read.
@@ -29,21 +30,21 @@ def write_document_local(document: str): # pylint: disable=unused-argument
     """
     return document
 
+
 class AgentState(MessagesState):
     """
     The state of the agent.
     """
+
     document: Optional[str] = None
     tools: List[Any]
 
 
-async def start_node(state: AgentState, config: RunnableConfig): # pylint: disable=unused-argument
+async def start_node(state: AgentState, config: RunnableConfig):  # pylint: disable=unused-argument
     """
     This is the entry point for the flow.
     """
-    return Command(
-        goto="chat_node"
-    )
+    return Command(goto="chat_node")
 
 
 async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
@@ -57,7 +58,7 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
     You MUST write the full document, even when changing only a few words.
     When you wrote the document, DO NOT repeat it as a message.
     Just briefly summarize the changes you made. 2 sentences max.
-    This is the current state of the document: ----\n {state.get('document')}\n-----
+    This is the current state of the document: ----\n {state.get("document")}\n-----
     """
 
     # Define the model
@@ -68,27 +69,29 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
         config = RunnableConfig(recursion_limit=25)
 
     # Use "predict_state" metadata to set up streaming for the write_document_local tool
-    config["metadata"]["predict_state"] = [{
-        "state_key": "document",
-        "tool": "write_document_local",
-        "tool_argument": "document"
-    }]
+    config["metadata"]["predict_state"] = [
+        {
+            "state_key": "document",
+            "tool": "write_document_local",
+            "tool_argument": "document",
+        }
+    ]
 
     # Bind the tools to the model
     model_with_tools = model.bind_tools(
-        [
-            *state["tools"],
-            write_document_local
-        ],
+        [*state["tools"], write_document_local],
         # Disable parallel tool calls to avoid race conditions
         parallel_tool_calls=False,
     )
 
     # Run the model to generate a response
-    response = await model_with_tools.ainvoke([
-        SystemMessage(content=system_prompt),
-        *state["messages"],
-    ], config)
+    response = await model_with_tools.ainvoke(
+        [
+            SystemMessage(content=system_prompt),
+            *state["messages"],
+        ],
+        config,
+    )
 
     # Update messages with the response
     messages = state["messages"] + [response]
@@ -113,20 +116,19 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
             tool_response = {
                 "role": "tool",
                 "content": "Document written.",
-                "tool_call_id": tool_call_id
+                "tool_call_id": tool_call_id,
             }
 
             # Add confirmation tool call
             confirm_tool_call = {
                 "role": "assistant",
                 "content": "",
-                "tool_calls": [{
-                    "id": str(uuid.uuid4()),
-                    "function": {
-                        "name": "confirm_changes",
-                        "arguments": "{}"
+                "tool_calls": [
+                    {
+                        "id": str(uuid.uuid4()),
+                        "function": {"name": "confirm_changes", "arguments": "{}"},
                     }
-                }]
+                ],
             }
 
             messages = messages + [tool_response, confirm_tool_call]
@@ -134,19 +136,11 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
             # Return Command to route to end
             return Command(
                 goto=END,
-                update={
-                    "messages": messages,
-                    "document": tool_call_args["document"]
-                }
+                update={"messages": messages, "document": tool_call_args["document"]},
             )
 
     # If no tool was called, go to end
-    return Command(
-        goto=END,
-        update={
-            "messages": messages
-        }
-    )
+    return Command(goto=END, update={"messages": messages})
 
 
 # Define the graph
@@ -166,9 +160,9 @@ is_fast_api = os.environ.get("LANGGRAPH_FAST_API", "false").lower() == "true"
 if is_fast_api:
     # For CopilotKit and other contexts, use MemorySaver
     from langgraph.checkpoint.memory import MemorySaver
+
     memory = MemorySaver()
     graph = workflow.compile(checkpointer=memory)
 else:
     # When running in LangGraph API/dev, don't use a custom checkpointer
     graph = workflow.compile()
-

@@ -122,7 +122,9 @@ class ReasoningMessageContentEvent(BaseEvent):
     Event containing reasoning message content.
     """
 
-    type: Literal[EventType.REASONING_MESSAGE_CONTENT] = EventType.REASONING_MESSAGE_CONTENT  # pyright: ignore[reportIncompatibleVariableOverride]
+    type: Literal[EventType.REASONING_MESSAGE_CONTENT] = (
+        EventType.REASONING_MESSAGE_CONTENT
+    )  # pyright: ignore[reportIncompatibleVariableOverride]
     message_id: str
     delta: str = Field(min_length=1)
 

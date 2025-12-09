@@ -18,9 +18,13 @@ class AgentState(MessagesState):
     """
     State of the agent.
     """
+
     tools: List[Any]
 
-async def chat_node(state: AgentState, config: RunnableConfig) -> Command[Literal["tool_node", "__end__"]]:
+
+async def chat_node(
+    state: AgentState, config: RunnableConfig
+) -> Command[Literal["tool_node", "__end__"]]:
     """
     Standard chat node based on the ReAct design pattern. It handles:
     - The model to use (and binds in CopilotKit actions and the tools defined above)
@@ -36,7 +40,7 @@ async def chat_node(state: AgentState, config: RunnableConfig) -> Command[Litera
 
     model_with_tools = model.bind_tools(
         [
-            *state.get("tools", []), # bind tools defined by ag-ui
+            *state.get("tools", []),  # bind tools defined by ag-ui
         ],
         parallel_tool_calls=False,
     )
@@ -45,17 +49,21 @@ async def chat_node(state: AgentState, config: RunnableConfig) -> Command[Litera
         content=f"Help the user with writing Haikus. If the user asks for a haiku, use the generate_haiku tool to display the haiku to the user."
     )
 
-    response = await model_with_tools.ainvoke([
-        system_message,
-        *state["messages"],
-    ], config)
+    response = await model_with_tools.ainvoke(
+        [
+            system_message,
+            *state["messages"],
+        ],
+        config,
+    )
 
     return Command(
         goto=END,
         update={
             "messages": [response],
-        }
+        },
     )
+
 
 workflow = StateGraph(AgentState)
 workflow.add_node("chat_node", chat_node)
@@ -73,6 +81,7 @@ is_fast_api = os.environ.get("LANGGRAPH_FAST_API", "false").lower() == "true"
 if is_fast_api:
     # For CopilotKit and other contexts, use MemorySaver
     from langgraph.checkpoint.memory import MemorySaver
+
     memory = MemorySaver()
     graph = workflow.compile(checkpointer=memory)
 else:

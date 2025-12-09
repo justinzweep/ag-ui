@@ -15,12 +15,15 @@ from langgraph.graph import MessagesState
 from langgraph.types import Command
 from langgraph.checkpoint.memory import MemorySaver
 
+
 class AgentState(MessagesState):
     """
     State of our graph.
     """
+
     tools: List[Any]
     model: str
+
 
 async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
     """
@@ -34,13 +37,12 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
     https://www.perplexity.ai/search/react-agents-NcXLQhreS0WDzpVaS4m9Cg
     """
 
-
     # 1. Define the model
     model = ChatOpenAI(model="o3")
     if state["model"] == "Anthropic":
         model = ChatAnthropic(
             model="claude-sonnet-4-20250514",
-            thinking={"type": "enabled", "budget_tokens": 2000}
+            thinking={"type": "enabled", "budget_tokens": 2000},
         )
     elif state["model"] == "Gemini":
         model = ChatGoogleGenerativeAI(model="gemini-2.5-pro", thinking_budget=1024)
@@ -58,23 +60,20 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
     )
 
     # 3. Define the system message by which the chat model will be run
-    system_message = SystemMessage(
-        content="You are a helpful assistant."
-    )
+    system_message = SystemMessage(content="You are a helpful assistant.")
 
     # 4. Run the model to generate a response
-    response = await model_with_tools.ainvoke([
-        system_message,
-        *state["messages"],
-    ], config)
+    response = await model_with_tools.ainvoke(
+        [
+            system_message,
+            *state["messages"],
+        ],
+        config,
+    )
 
     # 6. We've handled all tool calls, so we can end the graph.
-    return Command(
-        goto=END,
-        update={
-            "messages": response
-        }
-    )
+    return Command(goto=END, update={"messages": response})
+
 
 # Define a new graph
 workflow = StateGraph(AgentState)
@@ -93,6 +92,7 @@ is_fast_api = os.environ.get("LANGGRAPH_FAST_API", "false").lower() == "true"
 if is_fast_api:
     # For CopilotKit and other contexts, use MemorySaver
     from langgraph.checkpoint.memory import MemorySaver
+
     memory = MemorySaver()
     graph = workflow.compile(checkpointer=memory)
 else:

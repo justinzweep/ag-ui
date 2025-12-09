@@ -655,7 +655,9 @@ class LangGraphAgent:
                 and self.active_run.get("thinking_process", None) is not None
             ):
                 thinking_process = self.active_run["thinking_process"]
-                reasoning_id = thinking_process.get("reasoning_id", f"reasoning-{self.active_run['run_id']}")
+                reasoning_id = thinking_process.get(
+                    "reasoning_id", f"reasoning-{self.active_run['run_id']}"
+                )
                 message_id = thinking_process.get("message_id", f"msg-{reasoning_id}")
 
                 yield self._dispatch_event(
@@ -976,7 +978,9 @@ class LangGraphAgent:
         ):
             if self.active_run["thinking_process"].get("type"):
                 thinking_process = self.active_run["thinking_process"]
-                message_id = thinking_process.get("message_id", f"msg-reasoning-{self.active_run['run_id']}")
+                message_id = thinking_process.get(
+                    "message_id", f"msg-reasoning-{self.active_run['run_id']}"
+                )
                 yield self._dispatch_event(
                     ReasoningMessageEndEvent(
                         type=EventType.REASONING_MESSAGE_END,
@@ -984,7 +988,9 @@ class LangGraphAgent:
                     )
                 )
             thinking_process = self.active_run["thinking_process"]
-            reasoning_id = thinking_process.get("reasoning_id", f"reasoning-{self.active_run['run_id']}")
+            reasoning_id = thinking_process.get(
+                "reasoning_id", f"reasoning-{self.active_run['run_id']}"
+            )
             message_id = thinking_process.get("message_id", f"msg-{reasoning_id}")
 
             yield self._dispatch_event(
@@ -1002,7 +1008,9 @@ class LangGraphAgent:
             self.active_run["thinking_process"] = None
 
         if not self.active_run.get("thinking_process"):
-            reasoning_id = f"reasoning-{self.active_run['run_id']}-{thinking_step_index}"
+            reasoning_id = (
+                f"reasoning-{self.active_run['run_id']}-{thinking_step_index}"
+            )
             # Try to extract encrypted content from chunk if available
             encrypted_content = None
             # You can extract encrypted_content from the chunk's additional_kwargs if available

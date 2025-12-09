@@ -13,11 +13,14 @@ from langgraph.graph import StateGraph, END, START
 from langgraph.graph import MessagesState
 from langgraph.types import Command
 
+
 class AgentState(MessagesState):
     """
     State of our graph.
     """
+
     tools: List[Any]
+
 
 async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
     """
@@ -27,7 +30,7 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
     - Getting a response from the model
     - Handling tool calls
 
-    For more about the ReAct design pattern, see: 
+    For more about the ReAct design pattern, see:
     https://www.perplexity.ai/search/react-agents-NcXLQhreS0WDzpVaS4m9Cg
     """
 
@@ -44,7 +47,6 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
             *state["tools"],
             # your_tool_here
         ],
-
         # 2.1 Disable parallel tool calls to avoid race conditions,
         #     enable this for faster performance if you want to manage
         #     the complexity of running tool calls in parallel.
@@ -52,23 +54,20 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
     )
 
     # 3. Define the system message by which the chat model will be run
-    system_message = SystemMessage(
-        content="You are a helpful assistant."
-    )
+    system_message = SystemMessage(content="You are a helpful assistant.")
 
     # 4. Run the model to generate a response
-    response = await model_with_tools.ainvoke([
-        system_message,
-        *state["messages"],
-    ], config)
+    response = await model_with_tools.ainvoke(
+        [
+            system_message,
+            *state["messages"],
+        ],
+        config,
+    )
 
     # 6. We've handled all tool calls, so we can end the graph.
-    return Command(
-        goto=END,
-        update={
-            "messages": response
-        }
-    )
+    return Command(goto=END, update={"messages": response})
+
 
 # Define a new graph
 workflow = StateGraph(AgentState)
@@ -87,6 +86,7 @@ is_fast_api = os.environ.get("LANGGRAPH_FAST_API", "false").lower() == "true"
 if is_fast_api:
     # For CopilotKit and other contexts, use MemorySaver
     from langgraph.checkpoint.memory import MemorySaver
+
     memory = MemorySaver()
     graph = workflow.compile(checkpointer=memory)
 else:

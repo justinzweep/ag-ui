@@ -91,9 +91,7 @@ class TestEvents(unittest.TestCase):
 
     def test_reasoning_start(self):
         """Test creating and serializing a ReasoningStartEvent event"""
-        event = ReasoningStartEvent(
-            message_id="reasoning_123", timestamp=1648214400000
-        )
+        event = ReasoningStartEvent(message_id="reasoning_123", timestamp=1648214400000)
         self.assertEqual(event.message_id, "reasoning_123")
         self.assertIsNone(event.encrypted_content)
 
@@ -178,9 +176,7 @@ class TestEvents(unittest.TestCase):
 
     def test_reasoning_end(self):
         """Test creating and serializing a ReasoningEndEvent event"""
-        event = ReasoningEndEvent(
-            message_id="reasoning_123", timestamp=1648214400000
-        )
+        event = ReasoningEndEvent(message_id="reasoning_123", timestamp=1648214400000)
         self.assertEqual(event.message_id, "reasoning_123")
 
         # Test serialization
@@ -608,7 +604,8 @@ class TestEvents(unittest.TestCase):
                     deserialized_event.message_id, original_event.message_id
                 )
                 self.assertEqual(
-                    deserialized_event.encrypted_content, original_event.encrypted_content
+                    deserialized_event.encrypted_content,
+                    original_event.encrypted_content,
                 )
             elif isinstance(original_event, ReasoningMessageStartEvent):
                 self.assertEqual(

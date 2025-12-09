@@ -24,11 +24,7 @@ class TestMultimodalConversion(unittest.TestCase):
 
     def test_agui_text_only_to_langchain(self):
         """Test converting a text-only AG-UI message to LangChain."""
-        agui_message = UserMessage(
-            id="test-1",
-            role="user",
-            content="Hello, world!"
-        )
+        agui_message = UserMessage(id="test-1", role="user", content="Hello, world!")
 
         lc_messages = agui_messages_to_langchain([agui_message])
 
@@ -47,9 +43,9 @@ class TestMultimodalConversion(unittest.TestCase):
                 BinaryInputContent(
                     type="binary",
                     mime_type="image/jpeg",
-                    url="https://example.com/photo.jpg"
+                    url="https://example.com/photo.jpg",
                 ),
-            ]
+            ],
         )
 
         lc_messages = agui_messages_to_langchain([agui_message])
@@ -67,7 +63,7 @@ class TestMultimodalConversion(unittest.TestCase):
         self.assertEqual(lc_messages[0].content[1]["type"], "image_url")
         self.assertEqual(
             lc_messages[0].content[1]["image_url"]["url"],
-            "https://example.com/photo.jpg"
+            "https://example.com/photo.jpg",
         )
 
     def test_agui_multimodal_with_data_to_langchain(self):
@@ -81,9 +77,9 @@ class TestMultimodalConversion(unittest.TestCase):
                     type="binary",
                     mime_type="image/png",
                     data="iVBORw0KGgoAAAANSUhEUgAAAAUA",
-                    filename="test.png"
+                    filename="test.png",
                 ),
-            ]
+            ],
         )
 
         lc_messages = agui_messages_to_langchain([agui_message])
@@ -107,9 +103,9 @@ class TestMultimodalConversion(unittest.TestCase):
                 {"type": "text", "text": "What do you see?"},
                 {
                     "type": "image_url",
-                    "image_url": {"url": "https://example.com/image.jpg"}
+                    "image_url": {"url": "https://example.com/image.jpg"},
                 },
-            ]
+            ],
         )
 
         agui_messages = langchain_messages_to_agui([lc_message])
@@ -126,7 +122,9 @@ class TestMultimodalConversion(unittest.TestCase):
         # Check binary content
         self.assertIsInstance(agui_messages[0].content[1], BinaryInputContent)
         self.assertEqual(agui_messages[0].content[1].mime_type, "image/png")
-        self.assertEqual(agui_messages[0].content[1].url, "https://example.com/image.jpg")
+        self.assertEqual(
+            agui_messages[0].content[1].url, "https://example.com/image.jpg"
+        )
 
     def test_langchain_data_url_to_agui(self):
         """Test converting LangChain data URL to AG-UI."""
@@ -136,9 +134,9 @@ class TestMultimodalConversion(unittest.TestCase):
                 {"type": "text", "text": "Check this out"},
                 {
                     "type": "image_url",
-                    "image_url": {"url": "data:image/png;base64,iVBORw0KGgo"}
+                    "image_url": {"url": "data:image/png;base64,iVBORw0KGgo"},
                 },
-            ]
+            ],
         )
 
         agui_messages = langchain_messages_to_agui([lc_message])
@@ -160,7 +158,7 @@ class TestMultimodalConversion(unittest.TestCase):
             BinaryInputContent(
                 type="binary",
                 mime_type="image/jpeg",
-                url="https://example.com/image.jpg"
+                url="https://example.com/image.jpg",
             ),
             TextInputContent(type="text", text="World"),
         ]
@@ -179,7 +177,7 @@ class TestMultimodalConversion(unittest.TestCase):
                 type="binary",
                 mime_type="application/pdf",
                 url="https://example.com/doc.pdf",
-                filename="report.pdf"
+                filename="report.pdf",
             ),
         ]
 
@@ -193,9 +191,7 @@ class TestMultimodalConversion(unittest.TestCase):
         agui_content = [
             TextInputContent(type="text", text="Test text"),
             BinaryInputContent(
-                type="binary",
-                mime_type="image/png",
-                url="https://example.com/test.png"
+                type="binary", mime_type="image/png", url="https://example.com/test.png"
             ),
         ]
 
@@ -205,7 +201,9 @@ class TestMultimodalConversion(unittest.TestCase):
         self.assertEqual(lc_content[0]["type"], "text")
         self.assertEqual(lc_content[0]["text"], "Test text")
         self.assertEqual(lc_content[1]["type"], "image_url")
-        self.assertEqual(lc_content[1]["image_url"]["url"], "https://example.com/test.png")
+        self.assertEqual(
+            lc_content[1]["image_url"]["url"], "https://example.com/test.png"
+        )
 
     def test_convert_langchain_multimodal_to_agui_helper(self):
         """Test the convert_langchain_multimodal_to_agui helper function."""

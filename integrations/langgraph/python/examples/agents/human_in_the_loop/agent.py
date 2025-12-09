@@ -15,33 +15,38 @@ from langgraph.graph import MessagesState
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
+
 class Step(BaseModel):
     """
     A step in a task.
     """
+
     description: str = Field(description="The text of the step in imperative form")
     status: str = Field(description="The status of the step, always 'enabled'")
 
+
 @tool
 def plan_execution_steps(
-    steps: Annotated[ # pylint: disable=unused-argument
-        List[Step],
-        "An array of 10 step objects, each containing text and status"
-    ]
+    steps: Annotated[  # pylint: disable=unused-argument
+        List[Step], "An array of 10 step objects, each containing text and status"
+    ],
 ):
     """
     Make up 10 steps (only a couple of words per step) that are required for a task.
     The step should be in imperative form (i.e. Dig hole, Open door, ...).
     """
 
+
 class AgentState(MessagesState):
     """
     State of the agent.
     """
+
     steps: List[Dict[str, str]] = []
     tools: List[Any]
 
-async def start_node(state: Dict[str, Any], config: RunnableConfig): # pylint: disable=unused-argument
+
+async def start_node(state: Dict[str, Any], config: RunnableConfig):  # pylint: disable=unused-argument
     """
     This is the entry point for the flow.
     """
@@ -56,7 +61,7 @@ async def start_node(state: Dict[str, Any], config: RunnableConfig): # pylint: d
         update={
             "messages": state["messages"],
             "steps": state["steps"],
-        }
+        },
     )
 
 
@@ -79,37 +84,41 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
         config = RunnableConfig(recursion_limit=25)
 
     # Use "predict_state" metadata to set up streaming for the write_document tool
-    config["metadata"]["predict_state"] = [{
-        "state_key": "steps",
-        "tool": "plan_execution_steps",
-        "tool_argument": "steps"
-    }]
+    config["metadata"]["predict_state"] = [
+        {"state_key": "steps", "tool": "plan_execution_steps", "tool_argument": "steps"}
+    ]
 
     # Bind the tools to the model
     model_with_tools = model.bind_tools(
-        [
-            *state["tools"],
-            plan_execution_steps
-        ],
+        [*state["tools"], plan_execution_steps],
         # Disable parallel tool calls to avoid race conditions
         parallel_tool_calls=False,
     )
 
     # Run the model and generate a response
-    response = await model_with_tools.ainvoke([
-        SystemMessage(content=system_prompt),
-        *state["messages"],
-    ], config)
+    response = await model_with_tools.ainvoke(
+        [
+            SystemMessage(content=system_prompt),
+            *state["messages"],
+        ],
+        config,
+    )
 
     # Update messages with the response
     messages = state["messages"] + [response]
 
     # Handle tool calls
-    if hasattr(response, "tool_calls") and response.tool_calls and len(response.tool_calls) > 0:
+    if (
+        hasattr(response, "tool_calls")
+        and response.tool_calls
+        and len(response.tool_calls) > 0
+    ):
         # Handle dicts or object (backward compatibility)
-        tool_call = (response.tool_calls[0]
-                     if isinstance(response.tool_calls[0], dict)
-                     else vars(response.tool_calls[0]))
+        tool_call = (
+            response.tool_calls[0]
+            if isinstance(response.tool_calls[0], dict)
+            else vars(response.tool_calls[0])
+        )
 
         if tool_call["name"] == "plan_execution_steps":
             # Get the steps from the tool call
@@ -122,15 +131,11 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
             if isinstance(steps_raw, list):
                 for step in steps_raw:
                     if isinstance(step, dict) and "description" in step:
-                        steps_data.append({
-                            "description": step["description"],
-                            "status": "enabled"
-                        })
+                        steps_data.append(
+                            {"description": step["description"], "status": "enabled"}
+                        )
                     elif isinstance(step, str):
-                        steps_data.append({
-                            "description": step,
-                            "status": "enabled"
-                        })
+                        steps_data.append({"description": step, "status": "enabled"})
 
             # If no steps were processed correctly, return to END with the updated messages
             if not steps_data:
@@ -139,7 +144,7 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
                     update={
                         "messages": messages,
                         "steps": state["steps"],
-                    }
+                    },
                 )
             # Update steps in state and emit to frontend
             state["steps"] = steps_data
@@ -148,7 +153,7 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
             tool_response = {
                 "role": "tool",
                 "content": "Task steps generated.",
-                "tool_call_id": tool_call["id"]
+                "tool_call_id": tool_call["id"],
             }
 
             messages = messages + [tool_response]
@@ -159,7 +164,7 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
                 update={
                     "messages": messages,
                     "steps": state["steps"],
-                }
+                },
             )
 
     # If no tool calls or not plan_execution_steps, return to END with the updated messages
@@ -168,7 +173,7 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
         update={
             "messages": messages,
             "steps": state["steps"],
-        }
+        },
     )
 
 
@@ -197,10 +202,13 @@ async def process_steps_node(state: Dict[str, Any], config: RunnableConfig):
     Don't just repeat a list of steps, come up with a creative but short description (3 sentences max) of how you are performing the task.
     """
 
-    final_response = await ChatOpenAI(model="gpt-4o").ainvoke([
-        SystemMessage(content=final_prompt),
-        {"role": "user", "content": user_response}
-    ], config)
+    final_response = await ChatOpenAI(model="gpt-4o").ainvoke(
+        [
+            SystemMessage(content=final_prompt),
+            {"role": "user", "content": user_response},
+        ],
+        config,
+    )
 
     # Add the final response to messages
     messages = state["messages"] + [final_response]
@@ -215,7 +223,7 @@ async def process_steps_node(state: Dict[str, Any], config: RunnableConfig):
         update={
             "messages": messages,
             "steps": state["steps"],
-        }
+        },
     )
 
 
@@ -241,6 +249,7 @@ is_fast_api = os.environ.get("LANGGRAPH_FAST_API", "false").lower() == "true"
 if is_fast_api:
     # For CopilotKit and other contexts, use MemorySaver
     from langgraph.checkpoint.memory import MemorySaver
+
     memory = MemorySaver()
     graph = workflow.compile(checkpointer=memory)
 else:

@@ -19,13 +19,17 @@ from langgraph.graph import MessagesState
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, AIMessage
 
+
 def create_interrupt(message: str, options: List[Any], recommendation: Any, agent: str):
-    return interrupt({
-        "message": message,
-        "options": options,
-        "recommendation": recommendation,
-        "agent": agent,
-    })
+    return interrupt(
+        {
+            "message": message,
+            "options": options,
+            "recommendation": recommendation,
+            "agent": agent,
+        }
+    )
+
 
 # State schema for travel planning
 @dataclass
@@ -36,12 +40,14 @@ class Flight:
     price: str
     duration: str
 
+
 @dataclass
 class Hotel:
     name: str
     location: str
     price_per_night: str
     rating: str
+
 
 @dataclass
 class Experience:
@@ -50,7 +56,10 @@ class Experience:
     description: str
     location: str
 
-def merge_itinerary(left: Union[dict, None] = None, right: Union[dict, None] = None) -> dict:
+
+def merge_itinerary(
+    left: Union[dict, None] = None, right: Union[dict, None] = None
+) -> dict:
     """Custom reducer to merge shopping cart updates."""
     if not left:
         left = {}
@@ -59,8 +68,10 @@ def merge_itinerary(left: Union[dict, None] = None, right: Union[dict, None] = N
 
     return {**left, **right}
 
+
 class TravelAgentState(MessagesState):
     """Shared state for the travel agent system"""
+
     # Travel request details
     origin: str = ""
     destination: str = ""
@@ -78,24 +89,46 @@ class TravelAgentState(MessagesState):
     # Supervisor routing
     next_agent: Optional[str] = None
 
+
 # Static data for demonstration
 STATIC_FLIGHTS = [
     Flight("KLM", "Amsterdam (AMS)", "San Francisco (SFO)", "$650", "11h 30m"),
-    Flight("United", "Amsterdam (AMS)", "San Francisco (SFO)", "$720", "12h 15m")
+    Flight("United", "Amsterdam (AMS)", "San Francisco (SFO)", "$720", "12h 15m"),
 ]
 
 STATIC_HOTELS = [
     Hotel("Hotel Zephyr", "Fisherman's Wharf", "$280/night", "4.2 stars"),
     Hotel("The Ritz-Carlton", "Nob Hill", "$550/night", "4.8 stars"),
-    Hotel("Hotel Zoe", "Union Square", "$320/night", "4.4 stars")
+    Hotel("Hotel Zoe", "Union Square", "$320/night", "4.4 stars"),
 ]
 
 STATIC_EXPERIENCES = [
-    Experience("Pier 39", "activity", "Iconic waterfront destination with shops and sea lions", "Fisherman's Wharf"),
-    Experience("Golden Gate Bridge", "activity", "World-famous suspension bridge with stunning views", "Golden Gate"),
-    Experience("Swan Oyster Depot", "restaurant", "Historic seafood counter serving fresh oysters", "Polk Street"),
-    Experience("Tartine Bakery", "restaurant", "Artisanal bakery famous for bread and pastries", "Mission District")
+    Experience(
+        "Pier 39",
+        "activity",
+        "Iconic waterfront destination with shops and sea lions",
+        "Fisherman's Wharf",
+    ),
+    Experience(
+        "Golden Gate Bridge",
+        "activity",
+        "World-famous suspension bridge with stunning views",
+        "Golden Gate",
+    ),
+    Experience(
+        "Swan Oyster Depot",
+        "restaurant",
+        "Historic seafood counter serving fresh oysters",
+        "Polk Street",
+    ),
+    Experience(
+        "Tartine Bakery",
+        "restaurant",
+        "Artisanal bakery famous for bread and pastries",
+        "Mission District",
+    ),
 ]
+
 
 # Flights finder subgraph
 async def flights_finder(state: TravelAgentState, config: RunnableConfig):
@@ -104,16 +137,16 @@ async def flights_finder(state: TravelAgentState, config: RunnableConfig):
     # Simulate flight search with static data
     flights = STATIC_FLIGHTS
 
-    selected_flight = state.get('itinerary', {}).get('flight', None)
+    selected_flight = state.get("itinerary", {}).get("flight", None)
     if not selected_flight:
         selected_flight = create_interrupt(
             message=f"""
-        Found {len(flights)} flight options from {state.get('origin', 'Amsterdam')} to {state.get('destination', 'San Francisco')}.
+        Found {len(flights)} flight options from {state.get("origin", "Amsterdam")} to {state.get("destination", "San Francisco")}.
         I recommend choosing the flight by {flights[0].airline} since it's known to be on time and cheaper.
         """,
             options=flights,
             recommendation=flights[0],
-            agent="flights"
+            agent="flights",
         )
 
     if isinstance(selected_flight, str):
@@ -122,15 +155,17 @@ async def flights_finder(state: TravelAgentState, config: RunnableConfig):
         goto=END,
         update={
             "flights": flights,
-            "itinerary": {
-                "flight": selected_flight
-            },
-            "messages": state["messages"] + [{
-                "role": "assistant",
-                "content": f"Flights Agent: Great. I'll book you the {selected_flight["airline"]} flight from {selected_flight["departure"]} to {selected_flight["arrival"]}."
-            }]
-        }
+            "itinerary": {"flight": selected_flight},
+            "messages": state["messages"]
+            + [
+                {
+                    "role": "assistant",
+                    "content": f"Flights Agent: Great. I'll book you the {selected_flight['airline']} flight from {selected_flight['departure']} to {selected_flight['arrival']}.",
+                }
+            ],
+        },
     )
+
 
 # Hotels finder subgraph
 async def hotels_finder(state: TravelAgentState, config: RunnableConfig):
@@ -138,33 +173,35 @@ async def hotels_finder(state: TravelAgentState, config: RunnableConfig):
 
     # Simulate hotel search with static data
     hotels = STATIC_HOTELS
-    selected_hotel = state.get('itinerary', {}).get('hotel', None)
+    selected_hotel = state.get("itinerary", {}).get("hotel", None)
     if not selected_hotel:
         selected_hotel = create_interrupt(
             message=f"""
-        Found {len(hotels)} accommodation options in {state.get('destination', 'San Francisco')}.
+        Found {len(hotels)} accommodation options in {state.get("destination", "San Francisco")}.
         I recommend choosing the {hotels[2].name} since it strikes the balance between rating, price, and location.
         """,
             options=hotels,
             recommendation=hotels[2],
-            agent="hotels"
+            agent="hotels",
         )
 
     if isinstance(selected_hotel, str):
         selected_hotel = json.loads(selected_hotel)
     return Command(
-            goto=END,
-            update={
-                "hotels": hotels,
-                "itinerary": {
-                    "hotel": selected_hotel
-                },
-                "messages": state["messages"] + [{
+        goto=END,
+        update={
+            "hotels": hotels,
+            "itinerary": {"hotel": selected_hotel},
+            "messages": state["messages"]
+            + [
+                {
                     "role": "assistant",
-                    "content": f"Hotels Agent: Excellent choice! You'll like {selected_hotel["name"]}."
-                }]
-            }
-        )
+                    "content": f"Hotels Agent: Excellent choice! You'll like {selected_hotel['name']}.",
+                }
+            ],
+        },
+    )
+
 
 # Experiences finder subgraph
 async def experiences_finder(state: TravelAgentState, config: RunnableConfig):
@@ -187,8 +224,8 @@ async def experiences_finder(state: TravelAgentState, config: RunnableConfig):
     You already went ahead and found a bunch of experiences. All you have to do now, is to let the user know of your findings.
     
     Current status:
-    - Origin: {state.get('origin', 'Amsterdam')}
-    - Destination: {state.get('destination', 'San Francisco')}
+    - Origin: {state.get("origin", "Amsterdam")}
+    - Destination: {state.get("destination", "San Francisco")}
     - Flight chosen: {itinerary.get("hotel", None)}
     - Hotel chosen: {itinerary.get("hotel", None)}
     - activities found: {activities}
@@ -196,23 +233,28 @@ async def experiences_finder(state: TravelAgentState, config: RunnableConfig):
     """
 
     # Get supervisor decision
-    response = await model.ainvoke([
-        SystemMessage(content=system_prompt),
-        *state["messages"],
-    ], config)
+    response = await model.ainvoke(
+        [
+            SystemMessage(content=system_prompt),
+            *state["messages"],
+        ],
+        config,
+    )
 
     return Command(
         goto=END,
-        update={
-            "experiences": experiences,
-            "messages": state["messages"] + [response]
-        }
+        update={"experiences": experiences, "messages": state["messages"] + [response]},
     )
+
 
 class SupervisorResponseFormatter(BaseModel):
     """Always use this tool to structure your response to the user."""
+
     answer: str = Field(description="The answer to the user")
-    next_agent: str | None = Field(description="The agent to go to. Not required if you do not want to route to another agent.")
+    next_agent: str | None = Field(
+        description="The agent to go to. Not required if you do not want to route to another agent."
+    )
+
 
 # Supervisor agent
 async def supervisor_agent(state: TravelAgentState, config: RunnableConfig):
@@ -229,8 +271,8 @@ async def supervisor_agent(state: TravelAgentState, config: RunnableConfig):
     You are a travel planning supervisor. Your job is to coordinate specialized agents to help plan a trip.
     
     Current status:
-    - Origin: {state.get('origin', 'Amsterdam')}
-    - Destination: {state.get('destination', 'San Francisco')}
+    - Origin: {state.get("origin", "Amsterdam")}
+    - Destination: {state.get("destination", "San Francisco")}
     - Flights found: {has_flights}
     - Hotels found: {has_hotels}
     - Experiences found: {has_experiences}
@@ -258,10 +300,13 @@ async def supervisor_agent(state: TravelAgentState, config: RunnableConfig):
     )
 
     # Get supervisor decision
-    response = await model_with_tools.ainvoke([
-        SystemMessage(content=system_prompt),
-        *state["messages"],
-    ], config)
+    response = await model_with_tools.ainvoke(
+        [
+            SystemMessage(content=system_prompt),
+            *state["messages"],
+        ],
+        config,
+    )
 
     messages = state["messages"] + [response]
 
@@ -280,19 +325,22 @@ async def supervisor_agent(state: TravelAgentState, config: RunnableConfig):
         tool_response = {
             "role": "tool",
             "content": f"Routing to {next_agent} and providing the answer",
-            "tool_call_id": tool_call.id if hasattr(tool_call, 'id') else tool_call["id"]
+            "tool_call_id": tool_call.id
+            if hasattr(tool_call, "id")
+            else tool_call["id"],
         }
 
-        messages = messages + [tool_response, AIMessage(content=tool_call_args["answer"])]
+        messages = messages + [
+            tool_response,
+            AIMessage(content=tool_call_args["answer"]),
+        ]
 
         if next_agent is not None:
             return Command(goto=next_agent)
 
     # Fallback if no tool call
-    return Command(
-        goto=END,
-        update={"messages": messages}
-    )
+    return Command(goto=END, update={"messages": messages})
+
 
 # Create subgraphs
 flights_graph = StateGraph(TravelAgentState)
@@ -342,6 +390,7 @@ is_fast_api = os.environ.get("LANGGRAPH_FAST_API", "false").lower() == "true"
 if is_fast_api:
     # For CopilotKit and other contexts, use MemorySaver
     from langgraph.checkpoint.memory import MemorySaver
+
     memory = MemorySaver()
     graph = workflow.compile(checkpointer=memory)
 else:

@@ -17,23 +17,23 @@ from langgraph.types import Command
 from langgraph.graph import MessagesState
 from pydantic import BaseModel, Field
 
+
 class Step(BaseModel):
     """
     A step in a task.
     """
+
     description: str = Field(description="The text of the step in gerund form")
     status: str = Field(description="The status of the step, always 'pending'")
-
 
 
 # This tool simulates performing a task on the server.
 # The tool call will be streamed to the frontend as it is being generated.
 @tool
 def generate_task_steps_generative_ui(
-    steps: Annotated[ # pylint: disable=unused-argument
-        List[Step],
-        "An array of 10 step objects, each containing text and status"
-    ]
+    steps: Annotated[  # pylint: disable=unused-argument
+        List[Step], "An array of 10 step objects, each containing text and status"
+    ],
 ):
     """
     Make up 10 steps (only a couple of words per step) that are required for a task.
@@ -45,11 +45,12 @@ class AgentState(MessagesState):
     """
     State of the agent.
     """
+
     steps: List[dict] = []
     tools: List[Any]
 
 
-async def start_node(state: AgentState, config: RunnableConfig): # pylint: disable=unused-argument
+async def start_node(state: AgentState, config: RunnableConfig):  # pylint: disable=unused-argument
     """
     This is the entry point for the flow.
     """
@@ -59,10 +60,7 @@ async def start_node(state: AgentState, config: RunnableConfig): # pylint: disab
 
     return Command(
         goto="chat_node",
-        update={
-            "messages": state["messages"],
-            "steps": state["steps"]
-        }
+        update={"messages": state["messages"], "steps": state["steps"]},
     )
 
 
@@ -87,36 +85,44 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
         config = RunnableConfig(recursion_limit=25)
 
     # Use "predict_state" metadata to set up streaming for the write_document tool
-    config["metadata"]["predict_state"] = [{
-        "state_key": "steps",
-        "tool": "generate_task_steps_generative_ui",
-        "tool_argument": "steps",
-    }]
+    config["metadata"]["predict_state"] = [
+        {
+            "state_key": "steps",
+            "tool": "generate_task_steps_generative_ui",
+            "tool_argument": "steps",
+        }
+    ]
 
     # Bind the tools to the model
     model_with_tools = model.bind_tools(
-        [
-            *state["tools"],
-            generate_task_steps_generative_ui
-        ],
+        [*state["tools"], generate_task_steps_generative_ui],
         # Disable parallel tool calls to avoid race conditions
         parallel_tool_calls=False,
     )
 
     # Run the model to generate a response
-    response = await model_with_tools.ainvoke([
-        SystemMessage(content=system_prompt),
-        *state["messages"],
-    ], config)
+    response = await model_with_tools.ainvoke(
+        [
+            SystemMessage(content=system_prompt),
+            *state["messages"],
+        ],
+        config,
+    )
 
     messages = state["messages"] + [response]
 
     # Extract any tool calls from the response
-    if hasattr(response, "tool_calls") and response.tool_calls and len(response.tool_calls) > 0:
+    if (
+        hasattr(response, "tool_calls")
+        and response.tool_calls
+        and len(response.tool_calls) > 0
+    ):
         # Handle dicts or object (backward compatibility)
-        tool_call = (response.tool_calls[0]
-                     if isinstance(response.tool_calls[0], dict)
-                     else vars(response.tool_calls[0]))
+        tool_call = (
+            response.tool_calls[0]
+            if isinstance(response.tool_calls[0], dict)
+            else vars(response.tool_calls[0])
+        )
 
         if tool_call["name"] == "generate_task_steps_generative_ui":
             steps = [
@@ -128,7 +134,7 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
             tool_response = {
                 "role": "tool",
                 "content": "Steps executed.",
-                "tool_call_id": tool_call["id"]
+                "tool_call_id": tool_call["id"],
             }
 
             messages = messages + [tool_response]
@@ -136,7 +142,7 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
 
             # Return Command to route to simulate_task_node
             for i, _ in enumerate(steps):
-            # simulate executing the step
+                # simulate executing the step
                 await asyncio.sleep(1)
                 steps[i]["status"] = "completed"
                 # Update the state with the completed step using config
@@ -147,20 +153,11 @@ async def chat_node(state: AgentState, config: Optional[RunnableConfig] = None):
                 )
 
             return Command(
-                goto='start_node',
-                update={
-                    "messages": messages,
-                    "steps": state["steps"]
-                }
+                goto="start_node",
+                update={"messages": messages, "steps": state["steps"]},
             )
 
-    return Command(
-        goto=END,
-        update={
-            "messages": messages,
-            "steps": state["steps"]
-        }
-    )
+    return Command(goto=END, update={"messages": messages, "steps": state["steps"]})
 
 
 # Define the graph
@@ -184,6 +181,7 @@ is_fast_api = os.environ.get("LANGGRAPH_FAST_API", "false").lower() == "true"
 if is_fast_api:
     # For CopilotKit and other contexts, use MemorySaver
     from langgraph.checkpoint.memory import MemorySaver
+
     memory = MemorySaver()
     graph = workflow.compile(checkpointer=memory)
 else:
