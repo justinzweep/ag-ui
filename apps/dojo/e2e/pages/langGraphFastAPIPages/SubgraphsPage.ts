@@ -1,1 +1,1 @@
-export { SubgraphsPage } from '../langGraphPages/SubgraphsPage'
+export { SubgraphsPage } from "../langGraphPages/SubgraphsPage";

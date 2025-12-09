@@ -23,7 +23,7 @@ function getVideos(): VideoInfo[] {
 }
 
 export function generateSimpleLayout(
-  summaryResults: SummaryResults
+  summaryResults: SummaryResults,
 ): Array<KnownBlock | Block> {
   const { passed, failed, skipped, tests } = summaryResults;
 
@@ -49,7 +49,7 @@ export function generateSimpleLayout(
 
   // List failed tests
   const failedTests = tests.filter(
-    (test) => test.status === "failed" || test.status === "timedOut"
+    (test) => test.status === "failed" || test.status === "timedOut",
   );
 
   const failureLines = failedTests.map((test) => {

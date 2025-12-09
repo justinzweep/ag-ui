@@ -7,13 +7,9 @@ import {
 import { A2AChatPage } from "../../pages/a2aMiddlewarePages/A2AChatPage";
 
 test.describe("A2A Chat Feature", () => {
-  test("[A2A Middleware] Tab bar exists", async ({
-    page,
-  }) => {
+  test("[A2A Middleware] Tab bar exists", async ({ page }) => {
     await retryOnAIFailure(async () => {
-      await page.goto(
-        "/a2a-middleware/feature/a2a_chat"
-      );
+      await page.goto("/a2a-middleware/feature/a2a_chat");
 
       const chat = new A2AChatPage(page);
 

@@ -1,4 +1,4 @@
-import { Page, Locator, expect } from '@playwright/test';
+import { Page, Locator, expect } from "@playwright/test";
 
 export class SharedStatePage {
   readonly page: Page;
@@ -15,15 +15,20 @@ export class SharedStatePage {
   constructor(page: Page) {
     this.page = page;
     // Remove iframe references and use actual greeting text
-    this.agentGreeting = page.getByText("Hi 👋 How can I help with your recipe?");
-    this.chatInput = page.getByRole('textbox', { name: 'Type a message...' });
+    this.agentGreeting = page.getByText(
+      "Hi 👋 How can I help with your recipe?",
+    );
+    this.chatInput = page.getByRole("textbox", { name: "Type a message..." });
     this.sendButton = page.locator('[data-test-id="copilot-chat-ready"]');
-    this.promptResponseLoader = page.getByRole('button', { name: 'Please Wait...', disabled: true });
-    this.instructionsContainer = page.locator('.instructions-container');
-    this.addIngredient = page.getByRole('button', { name: '+ Add Ingredient' });
-    this.agentMessage = page.locator('.copilotKitAssistantMessage');
-    this.userMessage = page.locator('.copilotKitUserMessage');
-    this.ingredientCards = page.locator('.ingredient-card');
+    this.promptResponseLoader = page.getByRole("button", {
+      name: "Please Wait...",
+      disabled: true,
+    });
+    this.instructionsContainer = page.locator(".instructions-container");
+    this.addIngredient = page.getByRole("button", { name: "+ Add Ingredient" });
+    this.agentMessage = page.locator(".copilotKitAssistantMessage");
+    this.userMessage = page.locator(".copilotKitUserMessage");
+    this.ingredientCards = page.locator(".ingredient-card");
   }
 
   async openChat() {
@@ -37,13 +42,22 @@ export class SharedStatePage {
   }
 
   async loader() {
-    const timeout = (ms) => new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("Timeout waiting for promptResponseLoader to become visible")), ms);
-    });
+    const timeout = (ms) =>
+      new Promise((_, reject) => {
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                "Timeout waiting for promptResponseLoader to become visible",
+              ),
+            ),
+          ms,
+        );
+      });
 
     await Promise.race([
       this.promptResponseLoader.isVisible(),
-      timeout(5000) // 5 seconds timeout
+      timeout(5000), // 5 seconds timeout
     ]);
   }
 
@@ -54,14 +68,14 @@ export class SharedStatePage {
   }
 
   async addNewIngredient(placeholderText: string) {
-      this.addIngredient.click();
-      this.page.locator(`input[placeholder="${placeholderText}"]`);
+    this.addIngredient.click();
+    this.page.locator(`input[placeholder="${placeholderText}"]`);
   }
 
-  async getInstructionItems(containerLocator: Locator ) {
-    const count = await containerLocator.locator('.instruction-item').count();
+  async getInstructionItems(containerLocator: Locator) {
+    const count = await containerLocator.locator(".instruction-item").count();
     if (count <= 0) {
-      throw new Error('No instruction items found in the container.');
+      throw new Error("No instruction items found in the container.");
     }
     console.log(`✅ Found ${count} instruction items.`);
     return count;

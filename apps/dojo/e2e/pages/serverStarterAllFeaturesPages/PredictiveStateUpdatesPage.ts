@@ -1,4 +1,4 @@
-import { Page, Locator, expect } from '@playwright/test';
+import { Page, Locator, expect } from "@playwright/test";
 
 export class PredictiveStateUpdatesPage {
   readonly page: Page;
@@ -17,21 +17,29 @@ export class PredictiveStateUpdatesPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.agentGreeting = page.getByText("Hi 👋 How can I help with your document?");
-    this.chatInput = page.getByRole('textbox', { name: 'Type a message...' });
+    this.agentGreeting = page.getByText(
+      "Hi 👋 How can I help with your document?",
+    );
+    this.chatInput = page.getByRole("textbox", { name: "Type a message..." });
     this.sendButton = page.locator('[data-test-id="copilot-chat-ready"]');
-    this.agentResponsePrompt = page.locator('div.tiptap.ProseMirror');
-    this.userApprovalModal = page.locator('[data-testid="confirm-changes-modal"]').last();
-    this.approveButton = page.getByText('✓ Accepted');
-    this.acceptedButton = page.getByText('✓ Accepted');
-    this.confirmedChangesResponse = page.locator('.copilotKitAssistantMessage').last();
-    this.rejectedChangesResponse = page.locator('.copilotKitAssistantMessage').last();
-    this.highlights = page.locator('.tiptap em');
-    this.agentMessage = page.locator('.copilotKitAssistantMessage');
-    this.userMessage = page.locator('.copilotKitUserMessage');
+    this.agentResponsePrompt = page.locator("div.tiptap.ProseMirror");
+    this.userApprovalModal = page
+      .locator('[data-testid="confirm-changes-modal"]')
+      .last();
+    this.approveButton = page.getByText("✓ Accepted");
+    this.acceptedButton = page.getByText("✓ Accepted");
+    this.confirmedChangesResponse = page
+      .locator(".copilotKitAssistantMessage")
+      .last();
+    this.rejectedChangesResponse = page
+      .locator(".copilotKitAssistantMessage")
+      .last();
+    this.highlights = page.locator(".tiptap em");
+    this.agentMessage = page.locator(".copilotKitAssistantMessage");
+    this.userMessage = page.locator(".copilotKitUserMessage");
   }
 
-  async openChat() {   
+  async openChat() {
     await this.agentGreeting.isVisible();
   }
 
@@ -47,7 +55,7 @@ export class PredictiveStateUpdatesPage {
   }
 
   async getButton(page, buttonName) {
-    return page.getByRole('button', { name: buttonName }).click();
+    return page.getByRole("button", { name: buttonName }).click();
   }
 
   async getStatusLabelOfButton(page, statusText) {
@@ -57,37 +65,43 @@ export class PredictiveStateUpdatesPage {
   async getUserApproval() {
     await this.userApprovalModal.isVisible();
     await this.page.locator('[data-testid="confirm-button"]').click();
-    const acceptedLabel = this.page.locator('[data-testid="status-display"]').last();
+    const acceptedLabel = this.page
+      .locator('[data-testid="status-display"]')
+      .last();
     await acceptedLabel.isVisible();
   }
 
   async getUserRejection() {
     await this.userApprovalModal.isVisible();
     await this.page.locator('[data-testid="reject-button"]').click();
-    const rejectedLabel = this.page.locator('[data-testid="status-display"]').last();
+    const rejectedLabel = this.page
+      .locator('[data-testid="status-display"]')
+      .last();
     await rejectedLabel.isVisible();
   }
 
   async verifyAgentResponse(dragonName) {
-    const paragraphWithName = await this.page.locator(`div.tiptap >> text=${dragonName}`).first();
+    const paragraphWithName = await this.page
+      .locator(`div.tiptap >> text=${dragonName}`)
+      .first();
 
     const fullText = await paragraphWithName.textContent();
     if (!fullText) {
       return null;
     }
 
-    const match = fullText.match(new RegExp(dragonName, 'i'));
+    const match = fullText.match(new RegExp(dragonName, "i"));
     return match ? match[0] : null;
   }
 
-  async verifyHighlightedText(){
+  async verifyHighlightedText() {
     const highlightSelectors = [
-      '.tiptap em',
-      '.tiptap s',
-      'div.tiptap em',
-      'div.tiptap s'
+      ".tiptap em",
+      ".tiptap s",
+      "div.tiptap em",
+      "div.tiptap s",
     ];
-    
+
     let count = 0;
     for (const selector of highlightSelectors) {
       count = await this.page.locator(selector).count();
@@ -95,7 +109,7 @@ export class PredictiveStateUpdatesPage {
         break;
       }
     }
-    
+
     if (count > 0) {
       expect(count).toBeGreaterThan(0);
     } else {
@@ -106,16 +120,16 @@ export class PredictiveStateUpdatesPage {
 
   async getResponseContent() {
     const contentSelectors = [
-      'div.tiptap.ProseMirror',
-      'div.copilotKitMarkdown',
-      '.copilotKitAssistantMessage',
-      'div.tiptap'
+      "div.tiptap.ProseMirror",
+      "div.copilotKitMarkdown",
+      ".copilotKitAssistantMessage",
+      "div.tiptap",
     ];
-    
+
     for (const selector of contentSelectors) {
       const elements = this.page.locator(selector);
       const count = await elements.count();
-      
+
       if (count > 0) {
         try {
           const lastElement = elements.nth(count - 1);
@@ -128,14 +142,18 @@ export class PredictiveStateUpdatesPage {
         }
       }
     }
-    
-    const fallbackElements = this.page.locator('div.tiptap, div.copilotKitMarkdown');
+
+    const fallbackElements = this.page.locator(
+      "div.tiptap, div.copilotKitMarkdown",
+    );
     const fallbackCount = await fallbackElements.count();
     if (fallbackCount > 0) {
-      const fallbackContent = await fallbackElements.nth(fallbackCount - 1).textContent();
+      const fallbackContent = await fallbackElements
+        .nth(fallbackCount - 1)
+        .textContent();
       return fallbackContent ? fallbackContent.trim() : null;
     }
-    
+
     return null;
   }
 }

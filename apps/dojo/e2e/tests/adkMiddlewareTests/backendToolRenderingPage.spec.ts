@@ -1,13 +1,17 @@
 import { test, expect } from "@playwright/test";
 
-test("[ADK Middleware] Backend Tool Rendering displays weather cards", async ({ page }) => {
+test("[ADK Middleware] Backend Tool Rendering displays weather cards", async ({
+  page,
+}) => {
   // Set shorter default timeout for this test
   test.setTimeout(30000); // 30 seconds total
 
   await page.goto("/adk-middleware/feature/backend_tool_rendering");
 
   // Verify suggestion buttons are visible
-  await expect(page.getByRole("button", { name: "Weather in San Francisco" })).toBeVisible({
+  await expect(
+    page.getByRole("button", { name: "Weather in San Francisco" }),
+  ).toBeVisible({
     timeout: 5000,
   });
 
@@ -49,6 +53,8 @@ test("[ADK Middleware] Backend Tool Rendering displays weather cards", async ({ 
   await page.waitForTimeout(2000);
 
   // Verify at least one weather-related element is still visible
-  const weatherElements = await page.getByText(/Weather|Humidity|Wind|Temperature/i).count();
+  const weatherElements = await page
+    .getByText(/Weather|Humidity|Wind|Temperature/i)
+    .count();
   expect(weatherElements).toBeGreaterThan(0);
 });

@@ -12,9 +12,13 @@ export class ToolBaseGenUIPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.haikuAgentIntro = page.getByText("I'm a haiku generator 👋. How can I help you?").first();
+    this.haikuAgentIntro = page
+      .getByText("I'm a haiku generator 👋. How can I help you?")
+      .first();
     this.messageBox = page.getByPlaceholder("Type a message...").first();
-    this.sendButton = page.locator('[data-test-id="copilot-chat-ready"]').first();
+    this.sendButton = page
+      .locator('[data-test-id="copilot-chat-ready"]')
+      .first();
     this.haikuBlock = page.locator('[data-testid="haiku-card"]');
     this.applyButton = page.getByRole("button", { name: "Apply" });
     this.japaneseLines = page.locator('[data-testid="haiku-japanese-line"]');
@@ -54,12 +58,16 @@ export class ToolBaseGenUIPage {
 
     for (let cardIndex = cardCount - 1; cardIndex >= 0; cardIndex--) {
       chatHaikuContainer = allHaikuCards.nth(cardIndex);
-      chatHaikuLines = chatHaikuContainer.locator('[data-testid="haiku-japanese-line"]');
+      chatHaikuLines = chatHaikuContainer.locator(
+        '[data-testid="haiku-japanese-line"]',
+      );
       const linesCount = await chatHaikuLines.count();
 
       if (linesCount > 0) {
         try {
-          await chatHaikuLines.first().waitFor({ state: "visible", timeout: 8000 });
+          await chatHaikuLines
+            .first()
+            .waitFor({ state: "visible", timeout: 8000 });
           break;
         } catch (error) {
           continue;
@@ -109,7 +117,9 @@ export class ToolBaseGenUIPage {
       activeCard = carousel.locator('[data-testid="haiku-card"]').first();
     }
 
-    const mainDisplayLines = activeCard.locator('[data-testid="haiku-japanese-line"]');
+    const mainDisplayLines = activeCard.locator(
+      '[data-testid="haiku-japanese-line"]',
+    );
     const mainCount = await mainDisplayLines.count();
     const lines: string[] = [];
 
@@ -162,10 +172,10 @@ export class ToolBaseGenUIPage {
     const chatHaikuContent = await this.extractChatHaikuContent(page);
 
     await expect
-      .poll(
-        async () => this.carouselIncludesHaiku(page, chatHaikuContent),
-        { timeout: 20000, intervals: [500, 1000, 2000] },
-      )
+      .poll(async () => this.carouselIncludesHaiku(page, chatHaikuContent), {
+        timeout: 20000,
+        intervals: [500, 1000, 2000],
+      })
       .toBe(true);
   }
 }

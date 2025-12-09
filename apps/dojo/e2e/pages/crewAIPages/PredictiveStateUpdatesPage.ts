@@ -1,4 +1,4 @@
-import { Page, Locator, expect } from '@playwright/test';
+import { Page, Locator, expect } from "@playwright/test";
 
 export class PredictiveStateUpdatesPage {
   readonly page: Page;
@@ -17,17 +17,25 @@ export class PredictiveStateUpdatesPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.agentGreeting = page.getByText("Hi 👋 How can I help with your document?");
-    this.chatInput = page.getByRole('textbox', { name: 'Type a message...' });
+    this.agentGreeting = page.getByText(
+      "Hi 👋 How can I help with your document?",
+    );
+    this.chatInput = page.getByRole("textbox", { name: "Type a message..." });
     this.sendButton = page.locator('[data-test-id="copilot-chat-ready"]');
-    this.agentResponsePrompt = page.locator('div.tiptap.ProseMirror');
-    this.userApprovalModal = page.locator('div.bg-white.rounded.shadow-lg >> text=Confirm Changes');
-    this.acceptedButton = page.getByText('✓ Accepted');
-    this.confirmedChangesResponse = page.locator('div.copilotKitMarkdown').first();
-    this.rejectedChangesResponse = page.locator('div.copilotKitMarkdown').last();
-    this.highlights = page.locator('.tiptap em');
-    this.agentMessage = page.locator('.copilotKitAssistantMessage');
-    this.userMessage = page.locator('.copilotKitUserMessage');
+    this.agentResponsePrompt = page.locator("div.tiptap.ProseMirror");
+    this.userApprovalModal = page.locator(
+      "div.bg-white.rounded.shadow-lg >> text=Confirm Changes",
+    );
+    this.acceptedButton = page.getByText("✓ Accepted");
+    this.confirmedChangesResponse = page
+      .locator("div.copilotKitMarkdown")
+      .first();
+    this.rejectedChangesResponse = page
+      .locator("div.copilotKitMarkdown")
+      .last();
+    this.highlights = page.locator(".tiptap em");
+    this.agentMessage = page.locator(".copilotKitAssistantMessage");
+    this.userMessage = page.locator(".copilotKitUserMessage");
   }
 
   async openChat() {
@@ -46,7 +54,7 @@ export class PredictiveStateUpdatesPage {
   }
 
   async getButton(page, buttonName) {
-    return page.getByRole('button', { name: buttonName }).click();
+    return page.getByRole("button", { name: buttonName }).click();
   }
 
   async getStatusLabelOfButton(page, statusText) {
@@ -56,34 +64,41 @@ export class PredictiveStateUpdatesPage {
   async getUserApproval() {
     await this.userApprovalModal.last().isVisible();
     await this.getButton(this.page, "Confirm");
-    const acceptedLabel = this.userApprovalModal.last().locator('text=✓ Accepted');
+    const acceptedLabel = this.userApprovalModal
+      .last()
+      .locator("text=✓ Accepted");
   }
 
   async getUserRejection() {
     await this.userApprovalModal.last().isVisible();
     await this.getButton(this.page, "Reject");
-    const rejectedLabel = await this.getStatusLabelOfButton(this.page, "✕ Rejected");
+    const rejectedLabel = await this.getStatusLabelOfButton(
+      this.page,
+      "✕ Rejected",
+    );
     await rejectedLabel.isVisible();
   }
 
   async verifyAgentResponse(dragonName) {
-    const paragraphWithName = await this.page.locator(`div.tiptap >> text=${dragonName}`).first();
+    const paragraphWithName = await this.page
+      .locator(`div.tiptap >> text=${dragonName}`)
+      .first();
 
     const fullText = await paragraphWithName.textContent();
     if (!fullText) {
       return null;
     }
 
-    const match = fullText.match(new RegExp(dragonName, 'i'));
+    const match = fullText.match(new RegExp(dragonName, "i"));
     return match ? match[0] : null;
   }
 
-  async verifyHighlightedText(){
+  async verifyHighlightedText() {
     const highlightSelectors = [
-      '.tiptap em',
-      '.tiptap s',
-      'div.tiptap em',
-      'div.tiptap s'
+      ".tiptap em",
+      ".tiptap s",
+      "div.tiptap em",
+      "div.tiptap s",
     ];
 
     let count = 0;
@@ -97,7 +112,7 @@ export class PredictiveStateUpdatesPage {
     if (count > 0) {
       expect(count).toBeGreaterThan(0);
     } else {
-      const modal = this.page.locator('div.bg-white.rounded.shadow-lg');
+      const modal = this.page.locator("div.bg-white.rounded.shadow-lg");
       await expect(modal).toBeVisible();
     }
   }

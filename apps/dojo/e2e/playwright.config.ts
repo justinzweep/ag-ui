@@ -1,8 +1,6 @@
 import { defineConfig, ReporterDescription } from "@playwright/test";
 import { generateSimpleLayout } from "./slack-layout-simple";
 
-
-
 function getReporters(): ReporterDescription[] {
   const videoReporter: ReporterDescription = [
     "./reporters/s3-video-reporter.ts",
@@ -12,19 +10,20 @@ function getReporters(): ReporterDescription[] {
     },
   ];
   const s3Reporter: ReporterDescription = [
-      "./node_modules/playwright-slack-report/dist/src/SlackReporter.js",
-      {
-        slackWebHookUrl: process.env.SLACK_WEBHOOK_URL,
-        sendResults: "always", // always send results
-        maxNumberOfFailuresToShow: 10,
-        layout: generateSimpleLayout, // Use our simple layout
-      },
-    ];
+    "./node_modules/playwright-slack-report/dist/src/SlackReporter.js",
+    {
+      slackWebHookUrl: process.env.SLACK_WEBHOOK_URL,
+      sendResults: "always", // always send results
+      maxNumberOfFailuresToShow: 10,
+      layout: generateSimpleLayout, // Use our simple layout
+    },
+  ];
   const githubReporter: ReporterDescription = ["github"];
   const htmlReporter: ReporterDescription = ["html", { open: "never" }];
   const cleanReporter: ReporterDescription = ["./clean-reporter.js"];
 
-  const addVideoAndSlack = process.env.SLACK_WEBHOOK_URL && process.env.AWS_S3_BUCKET_NAME;
+  const addVideoAndSlack =
+    process.env.SLACK_WEBHOOK_URL && process.env.AWS_S3_BUCKET_NAME;
 
   return [
     process.env.CI ? githubReporter : undefined,

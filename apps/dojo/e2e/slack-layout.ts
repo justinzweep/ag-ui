@@ -78,8 +78,8 @@ function categorizeAndCleanError(test: any): {
         firstErrorMessage: test.errors?.[0]?.message,
       },
       null,
-      2
-    )
+      2,
+    ),
   );
 
   // AI Response Timeouts
@@ -152,7 +152,7 @@ function categorizeAndCleanError(test: any): {
 }
 
 export function generateCustomLayout(
-  summaryResults: SummaryResults
+  summaryResults: SummaryResults,
 ): Array<KnownBlock | Block> {
   const { passed, failed, skipped, tests } = summaryResults;
 
@@ -171,7 +171,7 @@ export function generateCustomLayout(
   const failures: Array<KnownBlock | Block> = [];
   if (failed > 0) {
     const failedTests = tests.filter(
-      (test) => test.status === "failed" || test.status === "timedOut"
+      (test) => test.status === "failed" || test.status === "timedOut",
     );
 
     // Categorize failures
@@ -205,7 +205,7 @@ export function generateCustomLayout(
               (v) =>
                 v.testName === test.name ||
                 v.testName.includes(test.name) ||
-                test.name.includes(v.testName)
+                test.name.includes(v.testName),
             );
             if (testVideo) break;
           }
@@ -215,7 +215,7 @@ export function generateCustomLayout(
             : "";
 
           return `• **${testName}**\n  → ${cleanError}${videoLink}`;
-        }
+        },
       );
 
       const uniqueActions = [...new Set(categoryFailures.map((f) => f.action))];

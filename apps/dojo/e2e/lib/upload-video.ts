@@ -42,7 +42,7 @@ export class S3VideoUploader {
   generateS3Path(
     videoPath: string,
     testName: string,
-    suiteName?: string
+    suiteName?: string,
   ): string {
     const filename = basename(videoPath);
     const runId = process.env.GITHUB_RUN_ID || `local-${Date.now()}`;
@@ -77,7 +77,7 @@ export class S3VideoUploader {
       console.log(
         `📹 Uploading video: ${basename(video.videoPath)} for test: ${
           video.testName
-        }`
+        }`,
       );
 
       // Read file content
@@ -113,7 +113,7 @@ export class S3VideoUploader {
    * Upload multiple videos concurrently
    */
   async uploadVideos(
-    videos: VideoToUpload[]
+    videos: VideoToUpload[],
   ): Promise<{ url: string; testName: string; suiteName?: string }[]> {
     if (videos.length === 0) {
       console.log("📹 No videos to upload");
@@ -133,7 +133,7 @@ export class S3VideoUploader {
       } catch (error) {
         console.error(
           `Failed to upload video for test ${video.testName}:`,
-          error
+          error,
         );
         return null;
       }
@@ -145,17 +145,17 @@ export class S3VideoUploader {
     const successfulUploads = results
       .filter(
         (
-          result
+          result,
         ): result is PromiseFulfilledResult<{
           url: string;
           testName: string;
           suiteName?: string;
-        } | null> => result.status === "fulfilled" && result.value !== null
+        } | null> => result.status === "fulfilled" && result.value !== null,
       )
       .map((result) => result.value!);
 
     const failedUploads = results.filter(
-      (result) => result.status === "rejected"
+      (result) => result.status === "rejected",
     ).length;
 
     console.log(`✅ Successfully uploaded ${successfulUploads.length} videos`);

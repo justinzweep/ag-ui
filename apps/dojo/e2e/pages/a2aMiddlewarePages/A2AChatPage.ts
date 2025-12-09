@@ -1,4 +1,4 @@
-import { Page, Locator, expect } from '@playwright/test';
+import { Page, Locator, expect } from "@playwright/test";
 
 export class A2AChatPage {
   readonly page: Page;
@@ -6,7 +6,7 @@ export class A2AChatPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.mainChatTab = page.getByRole('tab', {name: 'Main Chat' });
+    this.mainChatTab = page.getByRole("tab", { name: "Main Chat" });
   }
 
   async openChat() {

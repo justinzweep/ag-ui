@@ -24,11 +24,11 @@ export async function waitForAIResponse(page: Page, timeout: number = 90000) {
     () => {
       // Look for common AI loading indicators
       const loadingIndicators = document.querySelectorAll(
-        '[data-testid*="loading"], .loading, .spinner'
+        '[data-testid*="loading"], .loading, .spinner',
       );
       return loadingIndicators.length === 0;
     },
-    { timeout }
+    { timeout },
   );
 
   // Additional wait for content to stabilize
@@ -38,7 +38,7 @@ export async function waitForAIResponse(page: Page, timeout: number = 90000) {
 export async function retryOnAIFailure<T>(
   operation: () => Promise<T>,
   maxRetries: number = 3,
-  delayMs: number = 5000
+  delayMs: number = 5000,
 ): Promise<T> {
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -59,7 +59,7 @@ export async function retryOnAIFailure<T>(
         console.log(
           `🔄 Retrying operation (attempt ${
             i + 2
-          }/${maxRetries}) after AI service error: ${errorMsg}`
+          }/${maxRetries}) after AI service error: ${errorMsg}`,
         );
         await new Promise((resolve) => setTimeout(resolve, delayMs));
         continue;

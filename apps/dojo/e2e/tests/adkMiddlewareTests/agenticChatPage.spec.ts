@@ -6,15 +6,12 @@ import {
 } from "../../test-isolation-helper";
 import { AgenticChatPage } from "../../featurePages/AgenticChatPage";
 
-
 test.describe("Agentic Chat Feature", () => {
   test("[ADK Middleware] Agentic Chat sends and receives a message", async ({
     page,
   }) => {
     await retryOnAIFailure(async () => {
-      await page.goto(
-        "/adk-middleware/feature/agentic_chat"
-      );
+      await page.goto("/adk-middleware/feature/agentic_chat");
 
       const chat = new AgenticChatPage(page);
 
@@ -32,9 +29,7 @@ test.describe("Agentic Chat Feature", () => {
     page,
   }) => {
     await retryOnAIFailure(async () => {
-      await page.goto(
-        "/adk-middleware/feature/agentic_chat"
-      );
+      await page.goto("/adk-middleware/feature/agentic_chat");
 
       const chat = new AgenticChatPage(page);
 
@@ -42,33 +37,53 @@ test.describe("Agentic Chat Feature", () => {
       await chat.agentGreeting.waitFor({ state: "visible" });
 
       // Store initial background color
-      const backgroundContainer = page.locator('[data-testid="background-container"]')
-      const initialBackground = await backgroundContainer.evaluate(el => getComputedStyle(el).backgroundColor);
+      const backgroundContainer = page.locator(
+        '[data-testid="background-container"]',
+      );
+      const initialBackground = await backgroundContainer.evaluate(
+        (el) => getComputedStyle(el).backgroundColor,
+      );
       console.log("Initial background color:", initialBackground);
 
       // 1. Send message to change background to blue
       await chat.sendMessage("Hi change the background color to blue");
       await chat.assertUserMessageVisible(
-        "Hi change the background color to blue"
+        "Hi change the background color to blue",
       );
       await waitForAIResponse(page);
 
-      await expect(backgroundContainer).not.toHaveCSS('background-color', initialBackground, { timeout: 7000 });
-      const backgroundBlue = await backgroundContainer.evaluate(el => getComputedStyle(el).backgroundColor);
+      await expect(backgroundContainer).not.toHaveCSS(
+        "background-color",
+        initialBackground,
+        { timeout: 7000 },
+      );
+      const backgroundBlue = await backgroundContainer.evaluate(
+        (el) => getComputedStyle(el).backgroundColor,
+      );
       // Check if background is blue (string color name or contains blue)
-      expect(backgroundBlue.toLowerCase()).toMatch(/blue|rgb\(.*,.*,.*\)|#[0-9a-f]{6}/);
+      expect(backgroundBlue.toLowerCase()).toMatch(
+        /blue|rgb\(.*,.*,.*\)|#[0-9a-f]{6}/,
+      );
 
       // 2. Change to pink
       await chat.sendMessage("Hi change the background color to pink");
       await chat.assertUserMessageVisible(
-        "Hi change the background color to pink"
+        "Hi change the background color to pink",
       );
       await waitForAIResponse(page);
 
-      await expect(backgroundContainer).not.toHaveCSS('background-color', backgroundBlue, { timeout: 7000 });
-      const backgroundPink = await backgroundContainer.evaluate(el => getComputedStyle(el).backgroundColor);
+      await expect(backgroundContainer).not.toHaveCSS(
+        "background-color",
+        backgroundBlue,
+        { timeout: 7000 },
+      );
+      const backgroundPink = await backgroundContainer.evaluate(
+        (el) => getComputedStyle(el).backgroundColor,
+      );
       // Check if background is pink (string color name or contains pink)
-      expect(backgroundPink.toLowerCase()).toMatch(/pink|rgb\(.*,.*,.*\)|#[0-9a-f]{6}/);
+      expect(backgroundPink.toLowerCase()).toMatch(
+        /pink|rgb\(.*,.*,.*\)|#[0-9a-f]{6}/,
+      );
     });
   });
 
@@ -76,9 +91,7 @@ test.describe("Agentic Chat Feature", () => {
     page,
   }) => {
     await retryOnAIFailure(async () => {
-      await page.goto(
-        "/adk-middleware/feature/agentic_chat"
-      );
+      await page.goto("/adk-middleware/feature/agentic_chat");
 
       const chat = new AgenticChatPage(page);
       await chat.openChat();
@@ -102,7 +115,7 @@ test.describe("Agentic Chat Feature", () => {
 
       await chat.sendMessage("Can you remind me what my favorite fruit is?");
       await chat.assertUserMessageVisible(
-        "Can you remind me what my favorite fruit is?"
+        "Can you remind me what my favorite fruit is?",
       );
       await waitForAIResponse(page);
       await chat.assertAgentReplyVisible(new RegExp(favFruit, "i"));
