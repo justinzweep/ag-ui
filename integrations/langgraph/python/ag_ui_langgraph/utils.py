@@ -289,12 +289,12 @@ def resolve_reasoning_content(chunk: Any) -> LangGraphReasoning | None:
     if not content:
         return None
 
-    # Anthropic reasoning response (LangChain ChatAnthropic returns "reasoning" field)
+    # Anthropic reasoning response (LangChain ChatAnthropic returns "thinking" field)
     if isinstance(content, list) and content and content[0]:
-        if not content[0].get("reasoning"):
+        if not content[0].get("thinking"):
             return None
         return LangGraphReasoning(
-            text=content[0]["reasoning"], type="text", index=content[0].get("index", 0)
+            text=content[0]["thinking"], type="text", index=content[0].get("index", 0)
         )
 
     # OpenAI reasoning response
