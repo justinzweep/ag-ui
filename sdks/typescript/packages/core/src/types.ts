@@ -96,6 +96,13 @@ export const ActivityMessageSchema = z.object({
   content: z.record(z.any()),
 });
 
+export const ReasoningMessageSchema = z.object({
+  id: z.string(),
+  role: z.literal("reasoning"),
+  content: z.array(z.string()),
+  encryptedContent: z.string().optional(),
+});
+
 export const MessageSchema = z.discriminatedUnion("role", [
   DeveloperMessageSchema,
   SystemMessageSchema,
@@ -103,6 +110,7 @@ export const MessageSchema = z.discriminatedUnion("role", [
   UserMessageSchema,
   ToolMessageSchema,
   ActivityMessageSchema,
+  ReasoningMessageSchema,
 ]);
 
 export const RoleSchema = z.union([
@@ -112,6 +120,7 @@ export const RoleSchema = z.union([
   z.literal("user"),
   z.literal("tool"),
   z.literal("activity"),
+  z.literal("reasoning"),
 ]);
 
 export const ContextSchema = z.object({
@@ -149,6 +158,7 @@ export type AssistantMessage = z.infer<typeof AssistantMessageSchema>;
 export type UserMessage = z.infer<typeof UserMessageSchema>;
 export type ToolMessage = z.infer<typeof ToolMessageSchema>;
 export type ActivityMessage = z.infer<typeof ActivityMessageSchema>;
+export type ReasoningMessage = z.infer<typeof ReasoningMessageSchema>;
 export type Message = z.infer<typeof MessageSchema>;
 export type Context = z.infer<typeof ContextSchema>;
 export type Tool = z.infer<typeof ToolSchema>;

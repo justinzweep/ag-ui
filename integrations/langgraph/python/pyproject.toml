@@ -30,4 +30,5 @@ packages = ["ag_ui_langgraph"]
 dev = [
     "fastapi>=0.124.0",
     "pytest>=9.0.2",
+    "ruff>=0.14.8",
 ]

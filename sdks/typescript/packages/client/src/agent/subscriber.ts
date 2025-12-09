@@ -13,6 +13,11 @@ import {
   TextMessageContentEvent,
   TextMessageEndEvent,
   TextMessageStartEvent,
+  ReasoningStartEvent,
+  ReasoningMessageStartEvent,
+  ReasoningMessageContentEvent,
+  ReasoningMessageEndEvent,
+  ReasoningEndEvent,
   ToolCallArgsEvent,
   ToolCallEndEvent,
   ToolCallResultEvent,
@@ -89,6 +94,25 @@ export interface AgentSubscriber {
   ): MaybePromise<AgentStateMutation | void>;
   onTextMessageEndEvent?(
     params: { event: TextMessageEndEvent; textMessageBuffer: string } & AgentSubscriberParams,
+  ): MaybePromise<AgentStateMutation | void>;
+
+  onReasoningStartEvent?(
+    params: { event: ReasoningStartEvent } & AgentSubscriberParams,
+  ): MaybePromise<AgentStateMutation | void>;
+  onReasoningMessageStartEvent?(
+    params: { event: ReasoningMessageStartEvent } & AgentSubscriberParams,
+  ): MaybePromise<AgentStateMutation | void>;
+  onReasoningMessageContentEvent?(
+    params: {
+      event: ReasoningMessageContentEvent;
+      reasoningMessageBuffer: string;
+    } & AgentSubscriberParams,
+  ): MaybePromise<AgentStateMutation | void>;
+  onReasoningMessageEndEvent?(
+    params: { event: ReasoningMessageEndEvent; reasoningMessageBuffer: string } & AgentSubscriberParams,
+  ): MaybePromise<AgentStateMutation | void>;
+  onReasoningEndEvent?(
+    params: { event: ReasoningEndEvent } & AgentSubscriberParams,
   ): MaybePromise<AgentStateMutation | void>;
 
   onToolCallStartEvent?(

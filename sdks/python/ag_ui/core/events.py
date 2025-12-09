@@ -22,16 +22,17 @@ class EventType(str, Enum):
     TEXT_MESSAGE_CONTENT = "TEXT_MESSAGE_CONTENT"
     TEXT_MESSAGE_END = "TEXT_MESSAGE_END"
     TEXT_MESSAGE_CHUNK = "TEXT_MESSAGE_CHUNK"
-    THINKING_TEXT_MESSAGE_START = "THINKING_TEXT_MESSAGE_START"
-    THINKING_TEXT_MESSAGE_CONTENT = "THINKING_TEXT_MESSAGE_CONTENT"
-    THINKING_TEXT_MESSAGE_END = "THINKING_TEXT_MESSAGE_END"
+    REASONING_START = "REASONING_START"
+    REASONING_MESSAGE_START = "REASONING_MESSAGE_START"
+    REASONING_MESSAGE_CONTENT = "REASONING_MESSAGE_CONTENT"
+    REASONING_MESSAGE_END = "REASONING_MESSAGE_END"
+    REASONING_MESSAGE_CHUNK = "REASONING_MESSAGE_CHUNK"
+    REASONING_END = "REASONING_END"
     TOOL_CALL_START = "TOOL_CALL_START"
     TOOL_CALL_ARGS = "TOOL_CALL_ARGS"
     TOOL_CALL_END = "TOOL_CALL_END"
     TOOL_CALL_CHUNK = "TOOL_CALL_CHUNK"
     TOOL_CALL_RESULT = "TOOL_CALL_RESULT"
-    THINKING_START = "THINKING_START"
-    THINKING_END = "THINKING_END"
     STATE_SNAPSHOT = "STATE_SNAPSHOT"
     STATE_DELTA = "STATE_DELTA"
     MESSAGES_SNAPSHOT = "MESSAGES_SNAPSHOT"
@@ -96,35 +97,62 @@ class TextMessageChunkEvent(BaseEvent):
     delta: Optional[str] = None
 
 
-class ThinkingTextMessageStartEvent(BaseEvent):
+class ReasoningStartEvent(BaseEvent):
     """
-    Event indicating the start of a thinking text message.
-    """
-
-    type: Literal[EventType.THINKING_TEXT_MESSAGE_START] = (
-        EventType.THINKING_TEXT_MESSAGE_START
-    )  # pyright: ignore[reportIncompatibleVariableOverride]
-
-
-class ThinkingTextMessageContentEvent(BaseEvent):
-    """
-    Event indicating a piece of a thinking text message.
+    Event indicating the start of reasoning.
     """
 
-    type: Literal[EventType.THINKING_TEXT_MESSAGE_CONTENT] = (
-        EventType.THINKING_TEXT_MESSAGE_CONTENT
-    )  # pyright: ignore[reportIncompatibleVariableOverride]
+    type: Literal[EventType.REASONING_START] = EventType.REASONING_START  # pyright: ignore[reportIncompatibleVariableOverride]
+    message_id: str
+    encrypted_content: Optional[str] = None
+
+
+class ReasoningMessageStartEvent(BaseEvent):
+    """
+    Event indicating the start of a reasoning message.
+    """
+
+    type: Literal[EventType.REASONING_MESSAGE_START] = EventType.REASONING_MESSAGE_START  # pyright: ignore[reportIncompatibleVariableOverride]
+    message_id: str
+    role: Literal["assistant"] = "assistant"
+
+
+class ReasoningMessageContentEvent(BaseEvent):
+    """
+    Event containing reasoning message content.
+    """
+
+    type: Literal[EventType.REASONING_MESSAGE_CONTENT] = EventType.REASONING_MESSAGE_CONTENT  # pyright: ignore[reportIncompatibleVariableOverride]
+    message_id: str
     delta: str = Field(min_length=1)
 
 
-class ThinkingTextMessageEndEvent(BaseEvent):
+class ReasoningMessageEndEvent(BaseEvent):
     """
-    Event indicating the end of a thinking text message.
+    Event indicating the end of a reasoning message.
     """
 
-    type: Literal[EventType.THINKING_TEXT_MESSAGE_END] = (
-        EventType.THINKING_TEXT_MESSAGE_END
-    )  # pyright: ignore[reportIncompatibleVariableOverride]
+    type: Literal[EventType.REASONING_MESSAGE_END] = EventType.REASONING_MESSAGE_END  # pyright: ignore[reportIncompatibleVariableOverride]
+    message_id: str
+
+
+class ReasoningMessageChunkEvent(BaseEvent):
+    """
+    Convenience event for reasoning message chunks.
+    """
+
+    type: Literal[EventType.REASONING_MESSAGE_CHUNK] = EventType.REASONING_MESSAGE_CHUNK  # pyright: ignore[reportIncompatibleVariableOverride]
+    message_id: Optional[str] = None
+    delta: Optional[str] = None
+
+
+class ReasoningEndEvent(BaseEvent):
+    """
+    Event indicating the end of reasoning.
+    """
+
+    type: Literal[EventType.REASONING_END] = EventType.REASONING_END  # pyright: ignore[reportIncompatibleVariableOverride]
+    message_id: str
 
 
 class ToolCallStartEvent(BaseEvent):
@@ -179,23 +207,6 @@ class ToolCallResultEvent(BaseEvent):
     tool_call_id: str
     content: str
     role: Optional[Literal["tool"]] = None
-
-
-class ThinkingStartEvent(BaseEvent):
-    """
-    Event indicating the start of a thinking step event.
-    """
-
-    type: Literal[EventType.THINKING_START] = EventType.THINKING_START  # pyright: ignore[reportIncompatibleVariableOverride]
-    title: Optional[str] = None
-
-
-class ThinkingEndEvent(BaseEvent):
-    """
-    Event indicating the end of a thinking step event.
-    """
-
-    type: Literal[EventType.THINKING_END] = EventType.THINKING_END  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
 class StateSnapshotEvent(BaseEvent):
@@ -321,6 +332,12 @@ Event = Annotated[
         TextMessageContentEvent,
         TextMessageEndEvent,
         TextMessageChunkEvent,
+        ReasoningStartEvent,
+        ReasoningMessageStartEvent,
+        ReasoningMessageContentEvent,
+        ReasoningMessageEndEvent,
+        ReasoningMessageChunkEvent,
+        ReasoningEndEvent,
         ToolCallStartEvent,
         ToolCallArgsEvent,
         ToolCallEndEvent,

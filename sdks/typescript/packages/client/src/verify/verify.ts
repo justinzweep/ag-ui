@@ -14,8 +14,8 @@ export const verifyEvents =
     let firstEventReceived = false;
     // Track active steps
     let activeSteps = new Map<string, boolean>(); // Map of step name -> active status
-    let activeThinkingStep = false;
-    let activeThinkingStepMessage = false;
+    let activeReasoningBlock = false;
+    let activeReasoningMessage: string | null = null;
     let runStarted = false; // Track if a run has started
 
     // Function to reset state for a new run
@@ -23,8 +23,8 @@ export const verifyEvents =
       activeMessages.clear();
       activeToolCalls.clear();
       activeSteps.clear();
-      activeThinkingStep = false;
-      activeThinkingStepMessage = false;
+      activeReasoningBlock = false;
+      activeReasoningMessage = null;
       runFinished = false;
       runError = false;
       runStarted = true;
@@ -272,37 +272,51 @@ export const verifyEvents =
             return of(event);
           }
 
-          // Text message flow
-          case EventType.THINKING_TEXT_MESSAGE_START: {
-            if (!activeThinkingStep) {
+          // Reasoning message flow
+          case EventType.REASONING_START: {
+            if (activeReasoningBlock) {
               return throwError(
                 () =>
                   new AGUIError(
-                    `Cannot send 'THINKING_TEXT_MESSAGE_START' event: A thinking step is not in progress. Create one with 'THINKING_START' first.`,
+                    `Cannot send 'REASONING_START' event: A reasoning block is already in progress. End it with 'REASONING_END' first.`,
+                  ),
+              );
+            }
+
+            activeReasoningBlock = true;
+            return of(event);
+          }
+
+          case EventType.REASONING_MESSAGE_START: {
+            if (!activeReasoningBlock) {
+              return throwError(
+                () =>
+                  new AGUIError(
+                    `Cannot send 'REASONING_MESSAGE_START' event: No active reasoning block. Create one with 'REASONING_START' first.`,
                   ),
               );
             }
             // Can't start a message if one is already in progress
-            if (activeThinkingStepMessage) {
+            if (activeReasoningMessage) {
               return throwError(
                 () =>
                   new AGUIError(
-                    `Cannot send 'THINKING_TEXT_MESSAGE_START' event: A thinking message is already in progress. Complete it with 'THINKING_TEXT_MESSAGE_END' first.`,
+                    `Cannot send 'REASONING_MESSAGE_START' event: A reasoning message is already in progress. Complete it with 'REASONING_MESSAGE_END' first.`,
                   ),
               );
             }
 
-            activeThinkingStepMessage = true;
+            activeReasoningMessage = (event as any).messageId;
             return of(event);
           }
 
-          case EventType.THINKING_TEXT_MESSAGE_CONTENT: {
+          case EventType.REASONING_MESSAGE_CONTENT: {
             // Must be in a message and IDs must match
-            if (!activeThinkingStepMessage) {
+            if (!activeReasoningMessage || activeReasoningMessage !== (event as any).messageId) {
               return throwError(
                 () =>
                   new AGUIError(
-                    `Cannot send 'THINKING_TEXT_MESSAGE_CONTENT' event: No active thinking message found. Start a message with 'THINKING_TEXT_MESSAGE_START' first.`,
+                    `Cannot send 'REASONING_MESSAGE_CONTENT' event: No active reasoning message with ID '${(event as any).messageId}'. Start a message with 'REASONING_MESSAGE_START' first.`,
                   ),
               );
             }
@@ -310,49 +324,35 @@ export const verifyEvents =
             return of(event);
           }
 
-          case EventType.THINKING_TEXT_MESSAGE_END: {
+          case EventType.REASONING_MESSAGE_END: {
             // Must be in a message and IDs must match
-            if (!activeThinkingStepMessage) {
+            if (!activeReasoningMessage || activeReasoningMessage !== (event as any).messageId) {
               return throwError(
                 () =>
                   new AGUIError(
-                    `Cannot send 'THINKING_TEXT_MESSAGE_END' event: No active thinking message found. A 'THINKING_TEXT_MESSAGE_START' event must be sent first.`,
+                    `Cannot send 'REASONING_MESSAGE_END' event: No active reasoning message with ID '${(event as any).messageId}'. A 'REASONING_MESSAGE_START' event must be sent first.`,
                   ),
               );
             }
 
             // Reset message state
-            activeThinkingStepMessage = false;
+            activeReasoningMessage = null;
             return of(event);
           }
 
-          case EventType.THINKING_START: {
-            if (activeThinkingStep) {
+          case EventType.REASONING_END: {
+            // Must be in a reasoning block
+            if (!activeReasoningBlock) {
               return throwError(
                 () =>
                   new AGUIError(
-                    `Cannot send 'THINKING_START' event: A thinking step is already in progress. End it with 'THINKING_END' first.`,
+                    `Cannot send 'REASONING_END' event: No active reasoning block found. A 'REASONING_START' event must be sent first.`,
                   ),
               );
             }
 
-            activeThinkingStep = true;
-            return of(event);
-          }
-
-          case EventType.THINKING_END: {
-            // Must be in a message and IDs must match
-            if (!activeThinkingStep) {
-              return throwError(
-                () =>
-                  new AGUIError(
-                    `Cannot send 'THINKING_END' event: No active thinking step found. A 'THINKING_START' event must be sent first.`,
-                  ),
-              );
-            }
-
-            // Reset message state
-            activeThinkingStep = false;
+            // Reset reasoning state
+            activeReasoningBlock = false;
             return of(event);
           }
 

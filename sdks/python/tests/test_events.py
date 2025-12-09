@@ -10,6 +10,12 @@ from ag_ui.core.events import (
     EventType,
     MessagesSnapshotEvent,
     RawEvent,
+    ReasoningEndEvent,
+    ReasoningMessageChunkEvent,
+    ReasoningMessageContentEvent,
+    ReasoningMessageEndEvent,
+    ReasoningMessageStartEvent,
+    ReasoningStartEvent,
     RunErrorEvent,
     RunFinishedEvent,
     RunStartedEvent,
@@ -82,6 +88,105 @@ class TestEvents(unittest.TestCase):
         serialized = event.model_dump(by_alias=True)
         self.assertEqual(serialized["type"], "TEXT_MESSAGE_END")
         self.assertEqual(serialized["messageId"], "msg_123")
+
+    def test_reasoning_start(self):
+        """Test creating and serializing a ReasoningStartEvent event"""
+        event = ReasoningStartEvent(
+            message_id="reasoning_123", timestamp=1648214400000
+        )
+        self.assertEqual(event.message_id, "reasoning_123")
+        self.assertIsNone(event.encrypted_content)
+
+        # Test serialization
+        serialized = event.model_dump(by_alias=True)
+        self.assertEqual(serialized["type"], "REASONING_START")
+        self.assertEqual(serialized["messageId"], "reasoning_123")
+
+        # Test with encrypted content
+        event_encrypted = ReasoningStartEvent(
+            message_id="reasoning_456",
+            encrypted_content="encrypted_blob_xyz",
+            timestamp=1648214400000,
+        )
+        self.assertEqual(event_encrypted.encrypted_content, "encrypted_blob_xyz")
+        serialized_encrypted = event_encrypted.model_dump(by_alias=True)
+        self.assertEqual(serialized_encrypted["encryptedContent"], "encrypted_blob_xyz")
+
+    def test_reasoning_message_start(self):
+        """Test creating and serializing a ReasoningMessageStartEvent event"""
+        event = ReasoningMessageStartEvent(
+            message_id="msg_reasoning_123", timestamp=1648214400000
+        )
+        self.assertEqual(event.message_id, "msg_reasoning_123")
+        self.assertEqual(event.role, "assistant")
+
+        # Test serialization
+        serialized = event.model_dump(by_alias=True)
+        self.assertEqual(serialized["type"], "REASONING_MESSAGE_START")
+        self.assertEqual(serialized["messageId"], "msg_reasoning_123")
+        self.assertEqual(serialized["role"], "assistant")
+
+    def test_reasoning_message_content(self):
+        """Test creating and serializing a ReasoningMessageContentEvent event"""
+        event = ReasoningMessageContentEvent(
+            message_id="msg_reasoning_123",
+            delta="Thinking step...",
+            timestamp=1648214400000,
+        )
+        self.assertEqual(event.message_id, "msg_reasoning_123")
+        self.assertEqual(event.delta, "Thinking step...")
+
+        # Test serialization
+        serialized = event.model_dump(by_alias=True)
+        self.assertEqual(serialized["type"], "REASONING_MESSAGE_CONTENT")
+        self.assertEqual(serialized["messageId"], "msg_reasoning_123")
+        self.assertEqual(serialized["delta"], "Thinking step...")
+
+    def test_reasoning_message_end(self):
+        """Test creating and serializing a ReasoningMessageEndEvent event"""
+        event = ReasoningMessageEndEvent(
+            message_id="msg_reasoning_123", timestamp=1648214400000
+        )
+        self.assertEqual(event.message_id, "msg_reasoning_123")
+
+        # Test serialization
+        serialized = event.model_dump(by_alias=True)
+        self.assertEqual(serialized["type"], "REASONING_MESSAGE_END")
+        self.assertEqual(serialized["messageId"], "msg_reasoning_123")
+
+    def test_reasoning_message_chunk(self):
+        """Test creating and serializing a ReasoningMessageChunkEvent event"""
+        # Test with both messageId and delta
+        event = ReasoningMessageChunkEvent(
+            message_id="msg_reasoning_456",
+            delta="Chunk content",
+            timestamp=1648214400000,
+        )
+        self.assertEqual(event.message_id, "msg_reasoning_456")
+        self.assertEqual(event.delta, "Chunk content")
+
+        # Test serialization
+        serialized = event.model_dump(by_alias=True)
+        self.assertEqual(serialized["type"], "REASONING_MESSAGE_CHUNK")
+        self.assertEqual(serialized["messageId"], "msg_reasoning_456")
+        self.assertEqual(serialized["delta"], "Chunk content")
+
+        # Test with optional fields as None
+        event_minimal = ReasoningMessageChunkEvent(timestamp=1648214400000)
+        self.assertIsNone(event_minimal.message_id)
+        self.assertIsNone(event_minimal.delta)
+
+    def test_reasoning_end(self):
+        """Test creating and serializing a ReasoningEndEvent event"""
+        event = ReasoningEndEvent(
+            message_id="reasoning_123", timestamp=1648214400000
+        )
+        self.assertEqual(event.message_id, "reasoning_123")
+
+        # Test serialization
+        serialized = event.model_dump(by_alias=True)
+        self.assertEqual(serialized["type"], "REASONING_END")
+        self.assertEqual(serialized["messageId"], "reasoning_123")
 
     def test_tool_call_start(self):
         """Test creating and serializing a ToolCallStartEvent event"""
@@ -352,6 +457,33 @@ class TestEvents(unittest.TestCase):
                 "timestamp": 1648214400000,
             },
             {
+                "type": "REASONING_START",
+                "messageId": "reasoning_start",
+                "timestamp": 1648214400000,
+            },
+            {
+                "type": "REASONING_MESSAGE_START",
+                "messageId": "msg_reasoning_start",
+                "role": "assistant",
+                "timestamp": 1648214400000,
+            },
+            {
+                "type": "REASONING_MESSAGE_CONTENT",
+                "messageId": "msg_reasoning_content",
+                "delta": "Thinking...",
+                "timestamp": 1648214400000,
+            },
+            {
+                "type": "REASONING_MESSAGE_END",
+                "messageId": "msg_reasoning_end",
+                "timestamp": 1648214400000,
+            },
+            {
+                "type": "REASONING_END",
+                "messageId": "reasoning_end",
+                "timestamp": 1648214400000,
+            },
+            {
                 "type": "TOOL_CALL_START",
                 "toolCallId": "call_start",
                 "toolCallName": "get_info",
@@ -380,6 +512,11 @@ class TestEvents(unittest.TestCase):
         expected_types = [
             TextMessageStartEvent,
             TextMessageContentEvent,
+            ReasoningStartEvent,
+            ReasoningMessageStartEvent,
+            ReasoningMessageContentEvent,
+            ReasoningMessageEndEvent,
+            ReasoningEndEvent,
             ToolCallStartEvent,
             StateSnapshotEvent,
             ActivitySnapshotEvent,
@@ -401,6 +538,13 @@ class TestEvents(unittest.TestCase):
                 delta="",  # Empty delta, should fail
             )
 
+        # ReasoningMessageContentEvent delta cannot be empty
+        with self.assertRaises(ValueError):
+            ReasoningMessageContentEvent(
+                message_id="msg_reasoning_123",
+                delta="",  # Empty delta, should fail
+            )
+
     def test_serialization_round_trip(self):
         """Test serialization and deserialization for different event types"""
         # Create events of different types
@@ -409,6 +553,15 @@ class TestEvents(unittest.TestCase):
                 message_id="msg_123",
             ),
             TextMessageContentEvent(message_id="msg_123", delta="Hello, world!"),
+            ReasoningStartEvent(
+                message_id="reasoning_123", encrypted_content="encrypted_xyz"
+            ),
+            ReasoningMessageStartEvent(message_id="msg_reasoning_123"),
+            ReasoningMessageContentEvent(
+                message_id="msg_reasoning_123", delta="Thinking..."
+            ),
+            ReasoningMessageEndEvent(message_id="msg_reasoning_123"),
+            ReasoningEndEvent(message_id="reasoning_123"),
             ToolCallStartEvent(tool_call_id="call_123", tool_call_name="get_weather"),
             StateSnapshotEvent(snapshot={"status": "active"}),
             MessagesSnapshotEvent(messages=[UserMessage(id="user_1", content="Hello")]),
@@ -450,6 +603,31 @@ class TestEvents(unittest.TestCase):
                     deserialized_event.message_id, original_event.message_id
                 )
                 self.assertEqual(deserialized_event.delta, original_event.delta)
+            elif isinstance(original_event, ReasoningStartEvent):
+                self.assertEqual(
+                    deserialized_event.message_id, original_event.message_id
+                )
+                self.assertEqual(
+                    deserialized_event.encrypted_content, original_event.encrypted_content
+                )
+            elif isinstance(original_event, ReasoningMessageStartEvent):
+                self.assertEqual(
+                    deserialized_event.message_id, original_event.message_id
+                )
+                self.assertEqual(deserialized_event.role, original_event.role)
+            elif isinstance(original_event, ReasoningMessageContentEvent):
+                self.assertEqual(
+                    deserialized_event.message_id, original_event.message_id
+                )
+                self.assertEqual(deserialized_event.delta, original_event.delta)
+            elif isinstance(original_event, ReasoningMessageEndEvent):
+                self.assertEqual(
+                    deserialized_event.message_id, original_event.message_id
+                )
+            elif isinstance(original_event, ReasoningEndEvent):
+                self.assertEqual(
+                    deserialized_event.message_id, original_event.message_id
+                )
             elif isinstance(original_event, ToolCallStartEvent):
                 self.assertEqual(
                     deserialized_event.tool_call_id, original_event.tool_call_id

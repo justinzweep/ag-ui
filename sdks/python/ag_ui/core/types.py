@@ -142,6 +142,17 @@ class ActivityMessage(ConfiguredBaseModel):
     content: Dict[str, Any]
 
 
+class ReasoningMessage(ConfiguredBaseModel):
+    """
+    A reasoning message containing LLM chain-of-thought.
+    """
+
+    id: str
+    role: Literal["reasoning"] = "reasoning"  # pyright: ignore[reportIncompatibleVariableOverride]
+    content: List[str]
+    encrypted_content: Optional[str] = None
+
+
 Message = Annotated[
     Union[
         DeveloperMessage,
@@ -150,11 +161,12 @@ Message = Annotated[
         UserMessage,
         ToolMessage,
         ActivityMessage,
+        ReasoningMessage,
     ],
     Field(discriminator="role"),
 ]
 
-Role = Literal["developer", "system", "assistant", "user", "tool", "activity"]
+Role = Literal["developer", "system", "assistant", "user", "tool", "activity", "reasoning"]
 
 
 class Context(ConfiguredBaseModel):

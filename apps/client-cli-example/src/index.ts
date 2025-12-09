@@ -8,7 +8,9 @@ const rl = readline.createInterface({
 });
 
 async function chatLoop() {
-  console.log("🤖 AG-UI chat started! Type your messages and press Enter. Press Ctrl+D to quit.\n");
+  console.log(
+    "🤖 AG-UI chat started! Type your messages and press Enter. Press Ctrl+D to quit.\n",
+  );
 
   return new Promise<void>((resolve) => {
     const promptUser = () => {

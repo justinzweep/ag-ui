@@ -7,6 +7,7 @@ from ag_ui.core.types import (
     DeveloperMessage,
     FunctionCall,
     Message,
+    ReasoningMessage,
     RunAgentInput,
     SystemMessage,
     TextInputContent,
@@ -69,6 +70,37 @@ class TestBaseTypes(unittest.TestCase):
         self.assertEqual(serialized["role"], "activity")
         self.assertEqual(serialized["activityType"], "PLAN")
         self.assertEqual(serialized["content"], content)
+
+    def test_reasoning_message(self):
+        """Test creating and serializing a reasoning message"""
+        msg = ReasoningMessage(
+            id="reasoning_123",
+            content=["First thought", "Second thought", "Conclusion"],
+        )
+
+        self.assertEqual(msg.role, "reasoning")
+        self.assertEqual(msg.content, ["First thought", "Second thought", "Conclusion"])
+        self.assertIsNone(msg.encrypted_content)
+
+        serialized = msg.model_dump(by_alias=True)
+        self.assertEqual(serialized["role"], "reasoning")
+        self.assertEqual(len(serialized["content"]), 3)
+        self.assertEqual(serialized["content"][0], "First thought")
+
+    def test_reasoning_message_with_encrypted_content(self):
+        """Test creating and serializing a reasoning message with encrypted content"""
+        msg = ReasoningMessage(
+            id="reasoning_456",
+            content=["Thinking..."],
+            encrypted_content="encrypted_blob_xyz",
+        )
+
+        self.assertEqual(msg.role, "reasoning")
+        self.assertEqual(msg.encrypted_content, "encrypted_blob_xyz")
+
+        serialized = msg.model_dump(by_alias=True)
+        self.assertEqual(serialized["role"], "reasoning")
+        self.assertEqual(serialized["encryptedContent"], "encrypted_blob_xyz")
 
     def test_parse_camel_case_json_tool_message(self):
         """Test parsing JSON with camelCase field names"""
@@ -194,6 +226,11 @@ class TestBaseTypes(unittest.TestCase):
                 "activityType": "PLAN",
                 "content": {"steps": []},
             },
+            {
+                "id": "reasoning_505",
+                "role": "reasoning",
+                "content": ["Thought 1", "Thought 2"],
+            },
         ]
 
         expected_types = [
@@ -203,6 +240,7 @@ class TestBaseTypes(unittest.TestCase):
             UserMessage,
             ToolMessage,
             ActivityMessage,
+            ReasoningMessage,
         ]
 
         for data, expected_type in zip(message_data, expected_types):
@@ -264,6 +302,16 @@ class TestBaseTypes(unittest.TestCase):
                     "id": "dev_001",
                     "role": "developer",
                     "content": "The assistant should provide a detailed analysis.",
+                },
+                # Reasoning message
+                {
+                    "id": "reasoning_001",
+                    "role": "reasoning",
+                    "content": [
+                        "I need to analyze the sales data",
+                        "I should use the analyze_data tool",
+                    ],
+                    "encryptedContent": "encrypted_reasoning_xyz",
                 },
                 # Assistant message with tool calls
                 {
@@ -351,13 +399,14 @@ class TestBaseTypes(unittest.TestCase):
         self.assertEqual(run_agent_input.state["conversation_state"], "active")
 
         # Verify messages count and types
-        self.assertEqual(len(run_agent_input.messages), 6)
+        self.assertEqual(len(run_agent_input.messages), 7)
         self.assertIsInstance(run_agent_input.messages[0], SystemMessage)
         self.assertIsInstance(run_agent_input.messages[1], UserMessage)
         self.assertIsInstance(run_agent_input.messages[2], DeveloperMessage)
-        self.assertIsInstance(run_agent_input.messages[3], AssistantMessage)
-        self.assertIsInstance(run_agent_input.messages[4], ToolMessage)
-        self.assertIsInstance(run_agent_input.messages[5], UserMessage)
+        self.assertIsInstance(run_agent_input.messages[3], ReasoningMessage)
+        self.assertIsInstance(run_agent_input.messages[4], AssistantMessage)
+        self.assertIsInstance(run_agent_input.messages[5], ToolMessage)
+        self.assertIsInstance(run_agent_input.messages[6], UserMessage)
 
         # Verify specific message content
         self.assertEqual(
@@ -366,7 +415,14 @@ class TestBaseTypes(unittest.TestCase):
         self.assertEqual(
             run_agent_input.messages[1].content, "Can you help me analyze this data?"
         )
-        multimodal_content = run_agent_input.messages[5].content
+
+        # Verify reasoning message
+        reasoning_msg = run_agent_input.messages[3]
+        self.assertEqual(len(reasoning_msg.content), 2)
+        self.assertEqual(reasoning_msg.content[0], "I need to analyze the sales data")
+        self.assertEqual(reasoning_msg.encrypted_content, "encrypted_reasoning_xyz")
+
+        multimodal_content = run_agent_input.messages[6].content
         self.assertIsInstance(multimodal_content, list)
         self.assertEqual(multimodal_content[0].type, "text")
         self.assertEqual(multimodal_content[0].text, "Can you explain these results?")
@@ -376,12 +432,12 @@ class TestBaseTypes(unittest.TestCase):
         )
 
         # Verify assistant message with tool call
-        assistant_msg = run_agent_input.messages[3]
+        assistant_msg = run_agent_input.messages[4]
         self.assertEqual(len(assistant_msg.tool_calls), 1)
         self.assertEqual(assistant_msg.tool_calls[0].function.name, "analyze_data")
 
         # Verify tool message
-        tool_msg = run_agent_input.messages[4]
+        tool_msg = run_agent_input.messages[5]
         self.assertEqual(tool_msg.tool_call_id, "call_001")
         self.assertEqual(tool_msg.content, '{"mean": 42.5, "median": 38.0}')
 

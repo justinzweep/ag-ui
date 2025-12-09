@@ -27,11 +27,11 @@ from ag_ui.core import (
     TextMessageContentEvent,
     TextMessageEndEvent,
     TextMessageStartEvent,
-    ThinkingEndEvent,
-    ThinkingStartEvent,
-    ThinkingTextMessageContentEvent,
-    ThinkingTextMessageEndEvent,
-    ThinkingTextMessageStartEvent,
+    ReasoningStartEvent,
+    ReasoningMessageStartEvent,
+    ReasoningMessageContentEvent,
+    ReasoningMessageEndEvent,
+    ReasoningEndEvent,
     ToolCallArgsEvent,
     ToolCallEndEvent,
     ToolCallResultEvent,
@@ -654,14 +654,20 @@ class LangGraphAgent:
                 reasoning_data is None
                 and self.active_run.get("thinking_process", None) is not None
             ):
+                thinking_process = self.active_run["thinking_process"]
+                reasoning_id = thinking_process.get("reasoning_id", f"reasoning-{self.active_run['run_id']}")
+                message_id = thinking_process.get("message_id", f"msg-{reasoning_id}")
+
                 yield self._dispatch_event(
-                    ThinkingTextMessageEndEvent(
-                        type=EventType.THINKING_TEXT_MESSAGE_END,
+                    ReasoningMessageEndEvent(
+                        type=EventType.REASONING_MESSAGE_END,
+                        message_id=message_id,
                     )
                 )
                 yield self._dispatch_event(
-                    ThinkingEndEvent(
-                        type=EventType.THINKING_END,
+                    ReasoningEndEvent(
+                        type=EventType.REASONING_END,
+                        message_id=reasoning_id,
                     )
                 )
                 self.active_run["thinking_process"] = None
@@ -969,38 +975,72 @@ class LangGraphAgent:
             and self.active_run["thinking_process"]["index"] != thinking_step_index
         ):
             if self.active_run["thinking_process"].get("type"):
+                thinking_process = self.active_run["thinking_process"]
+                message_id = thinking_process.get("message_id", f"msg-reasoning-{self.active_run['run_id']}")
                 yield self._dispatch_event(
-                    ThinkingTextMessageEndEvent(
-                        type=EventType.THINKING_TEXT_MESSAGE_END,
+                    ReasoningMessageEndEvent(
+                        type=EventType.REASONING_MESSAGE_END,
+                        message_id=message_id,
                     )
                 )
+            thinking_process = self.active_run["thinking_process"]
+            reasoning_id = thinking_process.get("reasoning_id", f"reasoning-{self.active_run['run_id']}")
+            message_id = thinking_process.get("message_id", f"msg-{reasoning_id}")
+
             yield self._dispatch_event(
-                ThinkingEndEvent(
-                    type=EventType.THINKING_END,
+                ReasoningMessageEndEvent(
+                    type=EventType.REASONING_MESSAGE_END,
+                    message_id=message_id,
+                )
+            )
+            yield self._dispatch_event(
+                ReasoningEndEvent(
+                    type=EventType.REASONING_END,
+                    message_id=reasoning_id,
                 )
             )
             self.active_run["thinking_process"] = None
 
         if not self.active_run.get("thinking_process"):
+            reasoning_id = f"reasoning-{self.active_run['run_id']}-{thinking_step_index}"
+            # Try to extract encrypted content from chunk if available
+            encrypted_content = None
+            # You can extract encrypted_content from the chunk's additional_kwargs if available
+            # encrypted_content = chunk.additional_kwargs.get("encrypted_reasoning")
+
             yield self._dispatch_event(
-                ThinkingStartEvent(
-                    type=EventType.THINKING_START,
+                ReasoningStartEvent(
+                    type=EventType.REASONING_START,
+                    message_id=reasoning_id,
+                    encrypted_content=encrypted_content,
                 )
             )
-            self.active_run["thinking_process"] = {"index": thinking_step_index}
+            self.active_run["thinking_process"] = {
+                "index": thinking_step_index,
+                "reasoning_id": reasoning_id,
+            }
 
         if self.active_run["thinking_process"].get("type") != reasoning_data["type"]:
+            reasoning_id = self.active_run["thinking_process"]["reasoning_id"]
+            message_id = f"msg-{reasoning_id}"
+
             yield self._dispatch_event(
-                ThinkingTextMessageStartEvent(
-                    type=EventType.THINKING_TEXT_MESSAGE_START,
+                ReasoningMessageStartEvent(
+                    type=EventType.REASONING_MESSAGE_START,
+                    message_id=message_id,
+                    role="assistant",
                 )
             )
             self.active_run["thinking_process"]["type"] = reasoning_data["type"]
+            self.active_run["thinking_process"]["message_id"] = message_id
 
         if self.active_run["thinking_process"].get("type"):
+            message_id = self.active_run["thinking_process"]["message_id"]
+
             yield self._dispatch_event(
-                ThinkingTextMessageContentEvent(
-                    type=EventType.THINKING_TEXT_MESSAGE_CONTENT,
+                ReasoningMessageContentEvent(
+                    type=EventType.REASONING_MESSAGE_CONTENT,
+                    message_id=message_id,
                     delta=reasoning_data["text"],
                 )
             )

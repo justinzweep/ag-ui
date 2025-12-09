@@ -818,24 +818,33 @@ export const defaultApplyEvents = (
           throw new Error("TOOL_CALL_CHUNK must be tranformed before being applied");
         }
 
-        case EventType.THINKING_START: {
+        case EventType.REASONING_START: {
+          // Pass through - reasoning blocks don't modify state directly
           return emitUpdates();
         }
 
-        case EventType.THINKING_END: {
+        case EventType.REASONING_MESSAGE_START: {
+          // Pass through - reasoning messages are tracked but not added to messages yet
           return emitUpdates();
         }
 
-        case EventType.THINKING_TEXT_MESSAGE_START: {
+        case EventType.REASONING_MESSAGE_CONTENT: {
+          // Pass through - content handled by subscribers
           return emitUpdates();
         }
 
-        case EventType.THINKING_TEXT_MESSAGE_CONTENT: {
+        case EventType.REASONING_MESSAGE_END: {
+          // Pass through - reasoning messages can be added to state if needed
           return emitUpdates();
         }
 
-        case EventType.THINKING_TEXT_MESSAGE_END: {
+        case EventType.REASONING_END: {
+          // Pass through - reasoning block complete
           return emitUpdates();
+        }
+
+        case EventType.REASONING_MESSAGE_CHUNK: {
+          throw new Error("REASONING_MESSAGE_CHUNK must be transformed before being applied");
         }
       }
 
