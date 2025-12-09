@@ -1,7 +1,7 @@
-import uuid
-import json
-from typing import Optional, List, Any, Union, AsyncGenerator, Generator, Literal, Dict
 import inspect
+import json
+import uuid
+from typing import Any, AsyncGenerator, Dict, Generator, List, Literal, Optional, Union
 
 from langgraph.graph.state import CompiledStateGraph
 
@@ -10,38 +10,10 @@ try:
 except ImportError:
     # Langchain >= 1.0.0
     from langchain_core.messages import BaseMessage, SystemMessage, ToolMessage
-    
-from langchain_core.runnables import RunnableConfig, ensure_config
-from langchain_core.messages import HumanMessage
-from langgraph.types import Command
-
-from .types import (
-    State,
-    LangGraphPlatformMessage,
-    MessagesInProgressRecord,
-    SchemaKeys,
-    MessageInProgress,
-    RunMetadata,
-    LangGraphEventTypes,
-    CustomEventNames,
-    LangGraphReasoning
-)
-from .utils import (
-    agui_messages_to_langchain,
-    DEFAULT_SCHEMA_KEYS,
-    filter_object_by_schema_keys,
-    get_stream_payload_input,
-    langchain_messages_to_agui,
-    resolve_reasoning_content,
-    resolve_message_content,
-    camel_to_snake,
-    json_safe_stringify,
-    make_json_safe
-)
 
 from ag_ui.core import (
-    EventType,
     CustomEvent,
+    EventType,
     MessagesSnapshotEvent,
     RawEvent,
     RunAgentInput,
@@ -55,17 +27,43 @@ from ag_ui.core import (
     TextMessageContentEvent,
     TextMessageEndEvent,
     TextMessageStartEvent,
-    ToolCallArgsEvent,
-    ToolCallEndEvent,
-    ToolCallStartEvent,
-    ToolCallResultEvent,
-    ThinkingTextMessageStartEvent,
+    ThinkingEndEvent,
+    ThinkingStartEvent,
     ThinkingTextMessageContentEvent,
     ThinkingTextMessageEndEvent,
-    ThinkingStartEvent,
-    ThinkingEndEvent,
+    ThinkingTextMessageStartEvent,
+    ToolCallArgsEvent,
+    ToolCallEndEvent,
+    ToolCallResultEvent,
+    ToolCallStartEvent,
 )
-from ag_ui.encoder import EventEncoder
+from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableConfig, ensure_config
+from langgraph.types import Command
+
+from .types import (
+    CustomEventNames,
+    LangGraphEventTypes,
+    LangGraphPlatformMessage,
+    LangGraphReasoning,
+    MessageInProgress,
+    MessagesInProgressRecord,
+    RunMetadata,
+    SchemaKeys,
+    State,
+)
+from .utils import (
+    DEFAULT_SCHEMA_KEYS,
+    agui_messages_to_langchain,
+    camel_to_snake,
+    filter_object_by_schema_keys,
+    get_stream_payload_input,
+    json_safe_stringify,
+    langchain_messages_to_agui,
+    make_json_safe,
+    resolve_message_content,
+    resolve_reasoning_content,
+)
 
 ProcessedEvents = Union[
     TextMessageStartEvent,
@@ -86,15 +84,23 @@ ProcessedEvents = Union[
     StepFinishedEvent,
 ]
 
+
 class LangGraphAgent:
-    def __init__(self, *, name: str, graph: CompiledStateGraph, description: Optional[str] = None, config:  Union[Optional[RunnableConfig], dict] = None):
+    def __init__(
+        self,
+        *,
+        name: str,
+        graph: CompiledStateGraph,
+        description: Optional[str] = None,
+        config: Union[Optional[RunnableConfig], dict] = None,
+    ):
         self.name = name
         self.description = description
         self.graph = graph
         self.config = config or {}
         self.messages_in_process: MessagesInProgressRecord = {}
         self.active_run: Optional[RunMetadata] = None
-        self.constant_schema_keys = ['messages', 'tools']
+        self.constant_schema_keys = ["messages", "tools"]
 
     def _dispatch_event(self, event: ProcessedEvents) -> str:
         if event.type == EventType.RAW:
@@ -110,10 +116,14 @@ class LangGraphAgent:
             forwarded_props = {
                 camel_to_snake(k): v for k, v in input.forwarded_props.items()
             }
-        async for event_str in self._handle_stream_events(input.copy(update={"forwarded_props": forwarded_props})):
+        async for event_str in self._handle_stream_events(
+            input.copy(update={"forwarded_props": forwarded_props})
+        ):
             yield event_str
 
-    async def _handle_stream_events(self, input: RunAgentInput) -> AsyncGenerator[str, None]:
+    async def _handle_stream_events(
+        self, input: RunAgentInput
+    ) -> AsyncGenerator[str, None]:
         thread_id = input.thread_id or str(uuid.uuid4())
         INITIAL_ACTIVE_RUN = {
             "id": input.run_id,
@@ -125,25 +135,41 @@ class LangGraphAgent:
         self.active_run = INITIAL_ACTIVE_RUN
 
         forwarded_props = input.forwarded_props
-        node_name_input = forwarded_props.get('node_name', None) if forwarded_props else None
+        node_name_input = (
+            forwarded_props.get("node_name", None) if forwarded_props else None
+        )
 
         self.active_run["manually_emitted_state"] = None
 
         config = ensure_config(self.config.copy() if self.config else {})
-        config["configurable"] = {**(config.get('configurable', {})), "thread_id": thread_id}
+        config["configurable"] = {
+            **(config.get("configurable", {})),
+            "thread_id": thread_id,
+        }
 
         agent_state = await self.graph.aget_state(config)
-        resume_input = forwarded_props.get('command', {}).get('resume', None)
+        resume_input = forwarded_props.get("command", {}).get("resume", None)
 
-        if resume_input is None and thread_id and self.active_run.get("node_name") != "__end__" and self.active_run.get("node_name"):
+        if (
+            resume_input is None
+            and thread_id
+            and self.active_run.get("node_name") != "__end__"
+            and self.active_run.get("node_name")
+        ):
             self.active_run["mode"] = "continue"
         else:
             self.active_run["mode"] = "start"
 
-        prepared_stream_response = await self.prepare_stream(input=input, agent_state=agent_state, config=config)
+        prepared_stream_response = await self.prepare_stream(
+            input=input, agent_state=agent_state, config=config
+        )
 
         yield self._dispatch_event(
-            RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=self.active_run["id"])
+            RunStartedEvent(
+                type=EventType.RUN_STARTED,
+                thread_id=thread_id,
+                run_id=self.active_run["id"],
+            )
         )
         self.handle_node_change(node_name_input)
 
@@ -155,7 +181,7 @@ class LangGraphAgent:
         state = prepared_stream_response["state"]
         stream = prepared_stream_response["stream"]
         config = prepared_stream_response["config"]
-        events_to_dispatch = prepared_stream_response.get('events_to_dispatch', None)
+        events_to_dispatch = prepared_stream_response.get("events_to_dispatch", None)
 
         if events_to_dispatch is not None and len(events_to_dispatch) > 0:
             for event in events_to_dispatch:
@@ -164,16 +190,24 @@ class LangGraphAgent:
 
         should_exit = False
         current_graph_state = state
-        
+
         async for event in stream:
-            subgraphs_stream_enabled = input.forwarded_props.get('stream_subgraphs') if input.forwarded_props else False
-            is_subgraph_stream = (subgraphs_stream_enabled and (
-                event.get("event", "").startswith("events") or 
-                event.get("event", "").startswith("values")
-            ))
+            subgraphs_stream_enabled = (
+                input.forwarded_props.get("stream_subgraphs")
+                if input.forwarded_props
+                else False
+            )
+            is_subgraph_stream = subgraphs_stream_enabled and (
+                event.get("event", "").startswith("events")
+                or event.get("event", "").startswith("values")
+            )
             if event["event"] == "error":
                 yield self._dispatch_event(
-                    RunErrorEvent(type=EventType.RUN_ERROR, message=event["data"]["message"], raw_event=event)
+                    RunErrorEvent(
+                        type=EventType.RUN_ERROR,
+                        message=event["data"]["message"],
+                        raw_event=event,
+                    )
                 )
                 break
 
@@ -183,23 +217,29 @@ class LangGraphAgent:
             exiting_node = False
 
             if event_type == "on_chain_end" and isinstance(
-                    event.get("data", {}).get("output"), dict
+                event.get("data", {}).get("output"), dict
             ):
                 current_graph_state.update(event["data"]["output"])
                 exiting_node = self.active_run["node_name"] == current_node_name
 
             should_exit = should_exit or (
-                    event_type == "on_custom_event" and
-                    event["name"] == "exit"
-                )
+                event_type == "on_custom_event" and event["name"] == "exit"
+            )
 
-            if current_node_name and current_node_name != self.active_run.get("node_name"):
+            if current_node_name and current_node_name != self.active_run.get(
+                "node_name"
+            ):
                 for ev in self.handle_node_change(current_node_name):
                     yield ev
 
-            updated_state = self.active_run.get("manually_emitted_state") or current_graph_state
+            updated_state = (
+                self.active_run.get("manually_emitted_state") or current_graph_state
+            )
             has_state_diff = updated_state != state
-            if exiting_node or (has_state_diff and not self.get_message_in_progress(self.active_run["id"])):
+            if exiting_node or (
+                has_state_diff
+                and not self.get_message_in_progress(self.active_run["id"])
+            ):
                 state = updated_state
                 self.active_run["prev_node_name"] = self.active_run["node_name"]
                 current_graph_state.update(updated_state)
@@ -211,9 +251,7 @@ class LangGraphAgent:
                     )
                 )
 
-            yield self._dispatch_event(
-                RawEvent(type=EventType.RAW, event=event)
-            )
+            yield self._dispatch_event(RawEvent(type=EventType.RAW, event=event))
 
             async for single_event in self._handle_single_event(event, state):
                 yield single_event
@@ -224,7 +262,9 @@ class LangGraphAgent:
         interrupts = tasks[0].interrupts if tasks else []
 
         writes = state.metadata.get("writes", {}) or {}
-        node_name = self.active_run["node_name"] if interrupts else next(iter(writes), None)
+        node_name = (
+            self.active_run["node_name"] if interrupts else next(iter(writes), None)
+        )
         next_nodes = state.next or ()
         is_end_node = len(next_nodes) == 0 and not interrupts
 
@@ -246,7 +286,10 @@ class LangGraphAgent:
 
         state_values = state.values if state.values else state
         yield self._dispatch_event(
-            StateSnapshotEvent(type=EventType.STATE_SNAPSHOT, snapshot=self.get_state_snapshot(state_values))
+            StateSnapshotEvent(
+                type=EventType.STATE_SNAPSHOT,
+                snapshot=self.get_state_snapshot(state_values),
+            )
         )
 
         yield self._dispatch_event(
@@ -260,13 +303,18 @@ class LangGraphAgent:
             yield ev
 
         yield self._dispatch_event(
-            RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=self.active_run["id"])
+            RunFinishedEvent(
+                type=EventType.RUN_FINISHED,
+                thread_id=thread_id,
+                run_id=self.active_run["id"],
+            )
         )
         # Reset active run to how it was before the stream started
         self.active_run = INITIAL_ACTIVE_RUN
 
-
-    async def prepare_stream(self, input: RunAgentInput, agent_state: State, config: RunnableConfig):
+    async def prepare_stream(
+        self, input: RunAgentInput, agent_state: State, config: RunnableConfig
+    ):
         state_input = input.state or {}
         messages = input.messages or []
         forwarded_props = input.forwarded_props or {}
@@ -275,16 +323,24 @@ class LangGraphAgent:
         state_input["messages"] = agent_state.values.get("messages", [])
         self.active_run["current_graph_state"] = agent_state.values.copy()
         langchain_messages = agui_messages_to_langchain(messages)
-        state = self.langgraph_default_merge_state(state_input, langchain_messages, input)
+        state = self.langgraph_default_merge_state(
+            state_input, langchain_messages, input
+        )
         self.active_run["current_graph_state"].update(state)
         config["configurable"]["thread_id"] = thread_id
-        interrupts = agent_state.tasks[0].interrupts if agent_state.tasks and len(agent_state.tasks) > 0 else []
+        interrupts = (
+            agent_state.tasks[0].interrupts
+            if agent_state.tasks and len(agent_state.tasks) > 0
+            else []
+        )
         has_active_interrupts = len(interrupts) > 0
-        resume_input = forwarded_props.get('command', {}).get('resume', None)
+        resume_input = forwarded_props.get("command", {}).get("resume", None)
 
         self.active_run["schema_keys"] = self.get_schema_keys(config)
 
-        non_system_messages = [msg for msg in langchain_messages if not isinstance(msg, SystemMessage)]
+        non_system_messages = [
+            msg for msg in langchain_messages if not isinstance(msg, SystemMessage)
+        ]
         if len(agent_state.values.get("messages", [])) > len(non_system_messages):
             # Find the last user message by working backwards from the last message
             last_user_message = None
@@ -295,15 +351,17 @@ class LangGraphAgent:
 
             if last_user_message:
                 return await self.prepare_regenerate_stream(
-                    input=input,
-                    message_checkpoint=last_user_message,
-                    config=config
+                    input=input, message_checkpoint=last_user_message, config=config
                 )
 
         events_to_dispatch = []
         if has_active_interrupts and not resume_input:
             events_to_dispatch.append(
-                RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=self.active_run["id"])
+                RunStartedEvent(
+                    type=EventType.RUN_STARTED,
+                    thread_id=thread_id,
+                    run_id=self.active_run["id"],
+                )
             )
 
             for interrupt in interrupts:
@@ -317,7 +375,11 @@ class LangGraphAgent:
                 )
 
             events_to_dispatch.append(
-                RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=self.active_run["id"])
+                RunFinishedEvent(
+                    type=EventType.RUN_FINISHED,
+                    thread_id=thread_id,
+                    run_id=self.active_run["id"],
+                )
             )
             return {
                 "stream": None,
@@ -327,7 +389,9 @@ class LangGraphAgent:
             }
 
         if self.active_run["mode"] == "continue":
-            await self.graph.aupdate_state(config, state, as_node=self.active_run.get("node_name"))
+            await self.graph.aupdate_state(
+                config, state, as_node=self.active_run.get("node_name")
+            )
 
         if resume_input:
             stream_input = Command(resume=resume_input)
@@ -337,10 +401,15 @@ class LangGraphAgent:
                 state=state,
                 schema_keys=self.active_run["schema_keys"],
             )
-            stream_input = {**forwarded_props, **payload_input} if payload_input else None
+            stream_input = (
+                {**forwarded_props, **payload_input} if payload_input else None
+            )
 
-
-        subgraphs_stream_enabled = input.forwarded_props.get('stream_subgraphs') if input.forwarded_props else False
+        subgraphs_stream_enabled = (
+            input.forwarded_props.get("stream_subgraphs")
+            if input.forwarded_props
+            else False
+        )
 
         kwargs = self.get_stream_kwargs(
             input=stream_input,
@@ -351,33 +420,39 @@ class LangGraphAgent:
 
         stream = self.graph.astream_events(**kwargs)
 
-        return {
-            "stream": stream,
-            "state": state,
-            "config": config
-        }
+        return {"stream": stream, "state": state, "config": config}
 
-    async def prepare_regenerate_stream( # pylint: disable=too-many-arguments
-            self,
-            input: RunAgentInput,
-            message_checkpoint: HumanMessage,
-            config: RunnableConfig
+    async def prepare_regenerate_stream(  # pylint: disable=too-many-arguments
+        self,
+        input: RunAgentInput,
+        message_checkpoint: HumanMessage,
+        config: RunnableConfig,
     ):
         tools = input.tools or []
         thread_id = input.thread_id
 
-        time_travel_checkpoint = await self.get_checkpoint_before_message(message_checkpoint.id, thread_id)
+        time_travel_checkpoint = await self.get_checkpoint_before_message(
+            message_checkpoint.id, thread_id
+        )
         if time_travel_checkpoint is None:
             return None
 
         fork = await self.graph.aupdate_state(
             time_travel_checkpoint.config,
             time_travel_checkpoint.values,
-            as_node=time_travel_checkpoint.next[0] if time_travel_checkpoint.next else "__start__"
+            as_node=time_travel_checkpoint.next[0]
+            if time_travel_checkpoint.next
+            else "__start__",
         )
 
-        stream_input = self.langgraph_default_merge_state(time_travel_checkpoint.values, [message_checkpoint], input)
-        subgraphs_stream_enabled = input.forwarded_props.get('stream_subgraphs') if input.forwarded_props else False
+        stream_input = self.langgraph_default_merge_state(
+            time_travel_checkpoint.values, [message_checkpoint], input
+        )
+        subgraphs_stream_enabled = (
+            input.forwarded_props.get("stream_subgraphs")
+            if input.forwarded_props
+            else False
+        )
 
         kwargs = self.get_stream_kwargs(
             input=stream_input,
@@ -390,7 +465,7 @@ class LangGraphAgent:
         return {
             "stream": stream,
             "state": time_travel_checkpoint.values,
-            "config": config
+            "config": config,
         }
 
     def get_message_in_progress(self, run_id: str) -> Optional[MessageInProgress]:
@@ -409,15 +484,33 @@ class LangGraphAgent:
             output_schema = self.graph.get_output_jsonschema(config)
             config_schema = self.graph.config_schema().schema()
 
-            input_schema_keys = list(input_schema["properties"].keys()) if "properties" in input_schema else []
-            output_schema_keys = list(output_schema["properties"].keys()) if "properties" in output_schema else []
-            config_schema_keys = list(config_schema["properties"].keys()) if "properties" in config_schema else []
+            input_schema_keys = (
+                list(input_schema["properties"].keys())
+                if "properties" in input_schema
+                else []
+            )
+            output_schema_keys = (
+                list(output_schema["properties"].keys())
+                if "properties" in output_schema
+                else []
+            )
+            config_schema_keys = (
+                list(config_schema["properties"].keys())
+                if "properties" in config_schema
+                else []
+            )
             context_schema_keys = []
 
-            if hasattr(self.graph, "context_schema") and self.graph.context_schema is not None:
+            if (
+                hasattr(self.graph, "context_schema")
+                and self.graph.context_schema is not None
+            ):
                 context_schema = self.graph.context_schema().schema()
-                context_schema_keys = list(context_schema["properties"].keys()) if "properties" in context_schema else []
-
+                context_schema_keys = (
+                    list(context_schema["properties"].keys())
+                    if "properties" in context_schema
+                    else []
+                )
 
             return {
                 "input": [*input_schema_keys, *self.constant_schema_keys],
@@ -433,7 +526,9 @@ class LangGraphAgent:
                 "context": [],
             }
 
-    def langgraph_default_merge_state(self, state: State, messages: List[BaseMessage], input: RunAgentInput) -> State:
+    def langgraph_default_merge_state(
+        self, state: State, messages: List[BaseMessage], input: RunAgentInput
+    ) -> State:
         if messages and isinstance(messages[0], SystemMessage):
             messages = messages[1:]
 
@@ -459,7 +554,11 @@ class LangGraphAgent:
         seen_names = set()
         unique_tools = []
         for tool in all_tools:
-            tool_name = tool.get("name") if isinstance(tool, dict) else getattr(tool, "name", None)
+            tool_name = (
+                tool.get("name")
+                if isinstance(tool, dict)
+                else getattr(tool, "name", None)
+            )
             if tool_name and tool_name not in seen_names:
                 seen_names.add(tool_name)
                 unique_tools.append(tool)
@@ -471,30 +570,35 @@ class LangGraphAgent:
             **state,
             "messages": new_messages,
             "tools": unique_tools,
-            "ag-ui": {
-                "tools": unique_tools,
-                "context": input.context or []
-            }
+            "ag-ui": {"tools": unique_tools, "context": input.context or []},
         }
 
     def get_state_snapshot(self, state: State) -> State:
         schema_keys = self.active_run["schema_keys"]
         if schema_keys and schema_keys.get("output"):
-            state = filter_object_by_schema_keys(state, [*DEFAULT_SCHEMA_KEYS, *schema_keys["output"]])
+            state = filter_object_by_schema_keys(
+                state, [*DEFAULT_SCHEMA_KEYS, *schema_keys["output"]]
+            )
         return state
 
-    async def _handle_single_event(self, event: Any, state: State) -> AsyncGenerator[str, None]:
+    async def _handle_single_event(
+        self, event: Any, state: State
+    ) -> AsyncGenerator[str, None]:
         event_type = event.get("event")
         if event_type == LangGraphEventTypes.OnChatModelStream:
             should_emit_messages = event["metadata"].get("emit-messages", True)
             should_emit_tool_calls = event["metadata"].get("emit-tool-calls", True)
 
-            if event["data"]["chunk"].response_metadata.get('finish_reason', None):
+            if event["data"]["chunk"].response_metadata.get("finish_reason", None):
                 return
 
             current_stream = self.get_message_in_progress(self.active_run["id"])
             has_current_stream = bool(current_stream and current_stream.get("id"))
-            tool_call_data = event["data"]["chunk"].tool_call_chunks[0] if event["data"]["chunk"].tool_call_chunks else None
+            tool_call_data = (
+                event["data"]["chunk"].tool_call_chunks[0]
+                if event["data"]["chunk"].tool_call_chunks
+                else None
+            )
             predict_state_metadata = event["metadata"].get("predict_state", [])
             tool_call_used_to_predict_state = False
             if tool_call_data and tool_call_data.get("name") and predict_state_metadata:
@@ -503,23 +607,53 @@ class LangGraphAgent:
                     for predict_tool in predict_state_metadata
                 )
 
-            is_tool_call_start_event = not has_current_stream and tool_call_data and tool_call_data.get("name")
-            is_tool_call_args_event = has_current_stream and current_stream.get("tool_call_id") and tool_call_data and tool_call_data.get("args")
-            is_tool_call_end_event = has_current_stream and current_stream.get("tool_call_id") and not tool_call_data
+            is_tool_call_start_event = (
+                not has_current_stream and tool_call_data and tool_call_data.get("name")
+            )
+            is_tool_call_args_event = (
+                has_current_stream
+                and current_stream.get("tool_call_id")
+                and tool_call_data
+                and tool_call_data.get("args")
+            )
+            is_tool_call_end_event = (
+                has_current_stream
+                and current_stream.get("tool_call_id")
+                and not tool_call_data
+            )
 
-            if is_tool_call_start_event or is_tool_call_end_event or is_tool_call_args_event:
+            if (
+                is_tool_call_start_event
+                or is_tool_call_end_event
+                or is_tool_call_args_event
+            ):
                 self.active_run["has_function_streaming"] = True
 
-            reasoning_data = resolve_reasoning_content(event["data"]["chunk"]) if event["data"]["chunk"] else None
-            message_content = resolve_message_content(event["data"]["chunk"].content) if event["data"]["chunk"] and event["data"]["chunk"].content else None
+            reasoning_data = (
+                resolve_reasoning_content(event["data"]["chunk"])
+                if event["data"]["chunk"]
+                else None
+            )
+            message_content = (
+                resolve_message_content(event["data"]["chunk"].content)
+                if event["data"]["chunk"] and event["data"]["chunk"].content
+                else None
+            )
             is_message_content_event = tool_call_data is None and message_content
-            is_message_end_event = has_current_stream and not current_stream.get("tool_call_id") and not is_message_content_event
+            is_message_end_event = (
+                has_current_stream
+                and not current_stream.get("tool_call_id")
+                and not is_message_content_event
+            )
 
             if reasoning_data:
                 self.handle_thinking_event(reasoning_data)
                 return
 
-            if reasoning_data is None and self.active_run.get('thinking_process', None) is not None:
+            if (
+                reasoning_data is None
+                and self.active_run.get("thinking_process", None) is not None
+            ):
                 yield self._dispatch_event(
                     ThinkingTextMessageEndEvent(
                         type=EventType.THINKING_TEXT_MESSAGE_END,
@@ -538,21 +672,28 @@ class LangGraphAgent:
                         type=EventType.CUSTOM,
                         name="PredictState",
                         value=predict_state_metadata,
-                        raw_event=event
+                        raw_event=event,
                     )
                 )
 
             if is_tool_call_end_event:
                 yield self._dispatch_event(
-                    ToolCallEndEvent(type=EventType.TOOL_CALL_END, tool_call_id=current_stream["tool_call_id"], raw_event=event)
+                    ToolCallEndEvent(
+                        type=EventType.TOOL_CALL_END,
+                        tool_call_id=current_stream["tool_call_id"],
+                        raw_event=event,
+                    )
                 )
                 self.messages_in_process[self.active_run["id"]] = None
                 return
 
-
             if is_message_end_event:
                 yield self._dispatch_event(
-                    TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=current_stream["id"], raw_event=event)
+                    TextMessageEndEvent(
+                        type=EventType.TEXT_MESSAGE_END,
+                        message_id=current_stream["id"],
+                        raw_event=event,
+                    )
                 )
                 self.messages_in_process[self.active_run["id"]] = None
                 return
@@ -569,7 +710,11 @@ class LangGraphAgent:
                 )
                 self.set_message_in_progress(
                     self.active_run["id"],
-                    MessageInProgress(id=event["data"]["chunk"].id, tool_call_id=tool_call_data["id"], tool_call_name=tool_call_data["name"])
+                    MessageInProgress(
+                        id=event["data"]["chunk"].id,
+                        tool_call_id=tool_call_data["id"],
+                        tool_call_name=tool_call_data["name"],
+                    ),
                 )
                 return
 
@@ -579,7 +724,7 @@ class LangGraphAgent:
                         type=EventType.TOOL_CALL_ARGS,
                         tool_call_id=current_stream["tool_call_id"],
                         delta=tool_call_data["args"],
-                        raw_event=event
+                        raw_event=event,
                     )
                 )
                 return
@@ -599,8 +744,8 @@ class LangGraphAgent:
                         MessageInProgress(
                             id=event["data"]["chunk"].id,
                             tool_call_id=None,
-                            tool_call_name=None
-                        )
+                            tool_call_name=None,
+                        ),
                     )
                     current_stream = self.get_message_in_progress(self.active_run["id"])
 
@@ -615,16 +760,34 @@ class LangGraphAgent:
                 return
 
         elif event_type == LangGraphEventTypes.OnChatModelEnd:
-            if self.get_message_in_progress(self.active_run["id"]) and self.get_message_in_progress(self.active_run["id"]).get("tool_call_id"):
+            if self.get_message_in_progress(
+                self.active_run["id"]
+            ) and self.get_message_in_progress(self.active_run["id"]).get(
+                "tool_call_id"
+            ):
                 resolved = self._dispatch_event(
-                    ToolCallEndEvent(type=EventType.TOOL_CALL_END, tool_call_id=self.get_message_in_progress(self.active_run["id"])["tool_call_id"], raw_event=event)
+                    ToolCallEndEvent(
+                        type=EventType.TOOL_CALL_END,
+                        tool_call_id=self.get_message_in_progress(
+                            self.active_run["id"]
+                        )["tool_call_id"],
+                        raw_event=event,
+                    )
                 )
                 if resolved:
                     self.messages_in_process[self.active_run["id"]] = None
                 yield resolved
-            elif self.get_message_in_progress(self.active_run["id"]) and self.get_message_in_progress(self.active_run["id"]).get("id"):
+            elif self.get_message_in_progress(
+                self.active_run["id"]
+            ) and self.get_message_in_progress(self.active_run["id"]).get("id"):
                 resolved = self._dispatch_event(
-                    TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=self.get_message_in_progress(self.active_run["id"])["id"], raw_event=event)
+                    TextMessageEndEvent(
+                        type=EventType.TEXT_MESSAGE_END,
+                        message_id=self.get_message_in_progress(self.active_run["id"])[
+                            "id"
+                        ],
+                        raw_event=event,
+                    )
                 )
                 if resolved:
                     self.messages_in_process[self.active_run["id"]] = None
@@ -633,7 +796,12 @@ class LangGraphAgent:
         elif event_type == LangGraphEventTypes.OnCustomEvent:
             if event["name"] == CustomEventNames.ManuallyEmitMessage:
                 yield self._dispatch_event(
-                    TextMessageStartEvent(type=EventType.TEXT_MESSAGE_START, role="assistant", message_id=event["data"]["message_id"], raw_event=event)
+                    TextMessageStartEvent(
+                        type=EventType.TEXT_MESSAGE_START,
+                        role="assistant",
+                        message_id=event["data"]["message_id"],
+                        raw_event=event,
+                    )
                 )
                 yield self._dispatch_event(
                     TextMessageContentEvent(
@@ -644,7 +812,11 @@ class LangGraphAgent:
                     )
                 )
                 yield self._dispatch_event(
-                    TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=event["data"]["message_id"], raw_event=event)
+                    TextMessageEndEvent(
+                        type=EventType.TEXT_MESSAGE_END,
+                        message_id=event["data"]["message_id"],
+                        raw_event=event,
+                    )
                 )
 
             elif event["name"] == CustomEventNames.ManuallyEmitToolCall:
@@ -661,23 +833,39 @@ class LangGraphAgent:
                     ToolCallArgsEvent(
                         type=EventType.TOOL_CALL_ARGS,
                         tool_call_id=event["data"]["id"],
-                        delta=event["data"]["args"] if isinstance(event["data"]["args"], str) else json.dumps(
-                            event["data"]["args"]),
-                        raw_event=event
+                        delta=event["data"]["args"]
+                        if isinstance(event["data"]["args"], str)
+                        else json.dumps(event["data"]["args"]),
+                        raw_event=event,
                     )
                 )
                 yield self._dispatch_event(
-                    ToolCallEndEvent(type=EventType.TOOL_CALL_END, tool_call_id=event["data"]["id"], raw_event=event)
+                    ToolCallEndEvent(
+                        type=EventType.TOOL_CALL_END,
+                        tool_call_id=event["data"]["id"],
+                        raw_event=event,
+                    )
                 )
 
             elif event["name"] == CustomEventNames.ManuallyEmitState:
                 self.active_run["manually_emitted_state"] = event["data"]
                 yield self._dispatch_event(
-                    StateSnapshotEvent(type=EventType.STATE_SNAPSHOT, snapshot=self.get_state_snapshot(self.active_run["manually_emitted_state"]), raw_event=event)
+                    StateSnapshotEvent(
+                        type=EventType.STATE_SNAPSHOT,
+                        snapshot=self.get_state_snapshot(
+                            self.active_run["manually_emitted_state"]
+                        ),
+                        raw_event=event,
+                    )
                 )
-            
+
             yield self._dispatch_event(
-                CustomEvent(type=EventType.CUSTOM, name=event["name"], value=event["data"], raw_event=event)
+                CustomEvent(
+                    type=EventType.CUSTOM,
+                    name=event["name"],
+                    value=event["data"],
+                    raw_event=event,
+                )
             )
 
         elif event_type == LangGraphEventTypes.OnToolEnd:
@@ -685,7 +873,7 @@ class LangGraphAgent:
 
             if isinstance(tool_call_output, Command):
                 # Extract ToolMessages from Command.update
-                messages = tool_call_output.update.get('messages', [])
+                messages = tool_call_output.update.get("messages", [])
                 tool_messages = [m for m in messages if isinstance(m, ToolMessage)]
 
                 # Process each tool message
@@ -705,14 +893,14 @@ class LangGraphAgent:
                                 type=EventType.TOOL_CALL_ARGS,
                                 tool_call_id=tool_msg.tool_call_id,
                                 delta=json.dumps(event["data"].get("input", {})),
-                                raw_event=event
+                                raw_event=event,
                             )
                         )
                         yield self._dispatch_event(
                             ToolCallEndEvent(
                                 type=EventType.TOOL_CALL_END,
                                 tool_call_id=tool_msg.tool_call_id,
-                                raw_event=event
+                                raw_event=event,
                             )
                         )
 
@@ -722,7 +910,7 @@ class LangGraphAgent:
                             tool_call_id=tool_msg.tool_call_id,
                             message_id=str(uuid.uuid4()),
                             content=tool_msg.content,
-                            role="tool"
+                            role="tool",
                         )
                     )
                 return
@@ -742,14 +930,14 @@ class LangGraphAgent:
                         type=EventType.TOOL_CALL_ARGS,
                         tool_call_id=tool_call_output.tool_call_id,
                         delta=dump_json_safe(event["data"]["input"]),
-                        raw_event=event
+                        raw_event=event,
                     )
                 )
                 yield self._dispatch_event(
                     ToolCallEndEvent(
                         type=EventType.TOOL_CALL_END,
                         tool_call_id=tool_call_output.tool_call_id,
-                        raw_event=event
+                        raw_event=event,
                     )
                 )
 
@@ -759,20 +947,27 @@ class LangGraphAgent:
                     tool_call_id=tool_call_output.tool_call_id,
                     message_id=str(uuid.uuid4()),
                     content=dump_json_safe(tool_call_output.content),
-                    role="tool"
+                    role="tool",
                 )
             )
 
-    def handle_thinking_event(self, reasoning_data: LangGraphReasoning) -> Generator[str, Any, str | None]:
-        if not reasoning_data or "type" not in reasoning_data or "text" not in reasoning_data:
+    def handle_thinking_event(
+        self, reasoning_data: LangGraphReasoning
+    ) -> Generator[str, Any, str | None]:
+        if (
+            not reasoning_data
+            or "type" not in reasoning_data
+            or "text" not in reasoning_data
+        ):
             return ""
 
         thinking_step_index = reasoning_data.get("index")
 
-        if (self.active_run.get("thinking_process") and
-                self.active_run["thinking_process"].get("index") and
-                self.active_run["thinking_process"]["index"] != thinking_step_index):
-
+        if (
+            self.active_run.get("thinking_process")
+            and self.active_run["thinking_process"].get("index")
+            and self.active_run["thinking_process"]["index"] != thinking_step_index
+        ):
             if self.active_run["thinking_process"].get("type"):
                 yield self._dispatch_event(
                     ThinkingTextMessageEndEvent(
@@ -792,9 +987,7 @@ class LangGraphAgent:
                     type=EventType.THINKING_START,
                 )
             )
-            self.active_run["thinking_process"] = {
-                "index": thinking_step_index
-            }
+            self.active_run["thinking_process"] = {"index": thinking_step_index}
 
         if self.active_run["thinking_process"].get("type") != reasoning_data["type"]:
             yield self._dispatch_event(
@@ -808,7 +1001,7 @@ class LangGraphAgent:
             yield self._dispatch_event(
                 ThinkingTextMessageContentEvent(
                     type=EventType.THINKING_TEXT_MESSAGE_CONTENT,
-                    delta=reasoning_data["text"]
+                    delta=reasoning_data["text"],
                 )
             )
 
@@ -817,7 +1010,9 @@ class LangGraphAgent:
             raise ValueError("Missing thread_id in config")
 
         history_list = []
-        async for snapshot in self.graph.aget_state_history({"configurable": {"thread_id": thread_id}}):
+        async for snapshot in self.graph.aget_state_history(
+            {"configurable": {"thread_id": thread_id}}
+        ):
             history_list.append(snapshot)
 
         history_list.reverse()
@@ -835,7 +1030,10 @@ class LangGraphAgent:
                 del snapshot_values_without_messages["messages"]
                 checkpoint = history_list[idx - 1]
 
-                merged_values = {**checkpoint.values, **snapshot_values_without_messages}
+                merged_values = {
+                    **checkpoint.values,
+                    **snapshot_values_without_messages,
+                }
                 checkpoint = checkpoint._replace(values=merged_values)
 
                 return checkpoint
@@ -865,10 +1063,7 @@ class LangGraphAgent:
     def start_step(self, step_name: str):
         """Simple step start event dispatcher - node_name management handled by handle_node_change"""
         yield self._dispatch_event(
-            StepStartedEvent(
-                type=EventType.STEP_STARTED,
-                step_name=step_name
-            )
+            StepStartedEvent(type=EventType.STEP_STARTED, step_name=step_name)
         )
 
     def end_step(self):
@@ -878,20 +1073,19 @@ class LangGraphAgent:
 
         return self._dispatch_event(
             StepFinishedEvent(
-                type=EventType.STEP_FINISHED,
-                step_name=self.active_run["node_name"]
+                type=EventType.STEP_FINISHED, step_name=self.active_run["node_name"]
             )
         )
 
     # Check if some kwargs are enabled per LG version, to "catch all versions" and backwards compatibility
     def get_stream_kwargs(
-            self,
-            input: Any,
-            subgraphs: bool = False,
-            version: Literal["v1", "v2"] = "v2",
-            config: Optional[RunnableConfig] = None,
-            context: Optional[Dict[str, Any]] = None,
-            fork: Optional[Any] = None,
+        self,
+        input: Any,
+        subgraphs: bool = False,
+        version: Literal["v1", "v2"] = "v2",
+        config: Optional[RunnableConfig] = None,
+        context: Optional[Dict[str, Any]] = None,
+        fork: Optional[Any] = None,
     ):
         kwargs = dict(
             input=input,
@@ -901,17 +1095,21 @@ class LangGraphAgent:
 
         # Only add context if supported
         sig = inspect.signature(self.graph.astream_events)
-        if 'context' in sig.parameters:
+        if "context" in sig.parameters:
             base_context = {}
-            if isinstance(config, dict) and 'configurable' in config and isinstance(config['configurable'], dict):
-                base_context.update(config['configurable'])
+            if (
+                isinstance(config, dict)
+                and "configurable" in config
+                and isinstance(config["configurable"], dict)
+            ):
+                base_context.update(config["configurable"])
             if context:  # context might be None or {}
                 base_context.update(context)
             if base_context:  # only add if there's something to pass
-                kwargs['context'] = base_context
+                kwargs["context"] = base_context
 
         if config:
-            kwargs['config'] = config
+            kwargs["config"] = config
 
         if fork:
             kwargs.update(fork)
@@ -920,4 +1118,8 @@ class LangGraphAgent:
 
 
 def dump_json_safe(value):
-    return json.dumps(value, default=json_safe_stringify) if not isinstance(value, str) else value
+    return (
+        json.dumps(value, default=json_safe_stringify)
+        if not isinstance(value, str)
+        else value
+    )

@@ -12,6 +12,7 @@ class ConfiguredBaseModel(BaseModel):
     """
     A configurable base model.
     """
+
     model_config = ConfigDict(
         extra="allow",
         alias_generator=to_camel,
@@ -23,6 +24,7 @@ class FunctionCall(ConfiguredBaseModel):
     """
     Name and arguments of a function call.
     """
+
     name: str
     arguments: str
 
@@ -31,6 +33,7 @@ class ToolCall(ConfiguredBaseModel):
     """
     A tool call, modelled after OpenAI tool calls.
     """
+
     id: str
     type: Literal["function"] = "function"  # pyright: ignore[reportIncompatibleVariableOverride]
     function: FunctionCall
@@ -40,6 +43,7 @@ class BaseMessage(ConfiguredBaseModel):
     """
     A base message, modelled after OpenAI messages.
     """
+
     id: str
     role: str
     content: Optional[str] = None
@@ -50,6 +54,7 @@ class DeveloperMessage(BaseMessage):
     """
     A developer message.
     """
+
     role: Literal["developer"] = "developer"  # pyright: ignore[reportIncompatibleVariableOverride]
     content: str
 
@@ -58,6 +63,7 @@ class SystemMessage(BaseMessage):
     """
     A system message.
     """
+
     role: Literal["system"] = "system"  # pyright: ignore[reportIncompatibleVariableOverride]
     content: str
 
@@ -66,6 +72,7 @@ class AssistantMessage(BaseMessage):
     """
     An assistant message.
     """
+
     role: Literal["assistant"] = "assistant"  # pyright: ignore[reportIncompatibleVariableOverride]
     tool_calls: Optional[List[ToolCall]] = None
 
@@ -91,7 +98,9 @@ class BinaryInputContent(ConfiguredBaseModel):
     def validate_source(self) -> "BinaryInputContent":
         """Ensure at least one binary payload source is provided."""
         if not any([self.id, self.url, self.data]):
-            raise ValueError("BinaryInputContent requires id, url, or data to be provided.")
+            raise ValueError(
+                "BinaryInputContent requires id, url, or data to be provided."
+            )
         return self
 
 
@@ -114,6 +123,7 @@ class ToolMessage(ConfiguredBaseModel):
     """
     A tool result message.
     """
+
     id: str
     role: Literal["tool"] = "tool"
     content: str
@@ -141,7 +151,7 @@ Message = Annotated[
         ToolMessage,
         ActivityMessage,
     ],
-    Field(discriminator="role")
+    Field(discriminator="role"),
 ]
 
 Role = Literal["developer", "system", "assistant", "user", "tool", "activity"]
@@ -151,6 +161,7 @@ class Context(ConfiguredBaseModel):
     """
     Additional context for the agent.
     """
+
     description: str
     value: str
 
@@ -159,6 +170,7 @@ class Tool(ConfiguredBaseModel):
     """
     A tool definition.
     """
+
     name: str
     description: str
     parameters: Any  # JSON Schema for the tool parameters
@@ -168,6 +180,7 @@ class RunAgentInput(ConfiguredBaseModel):
     """
     Input for running an agent.
     """
+
     thread_id: str
     run_id: str
     parent_run_id: Optional[str] = None

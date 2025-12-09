@@ -1,12 +1,14 @@
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
-
 from ag_ui.core.types import RunAgentInput
 from ag_ui.encoder import EventEncoder
+from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse
 
 from .agent import LangGraphAgent
 
-def add_langgraph_fastapi_endpoint(app: FastAPI, agent: LangGraphAgent, path: str = "/"):
+
+def add_langgraph_fastapi_endpoint(
+    app: FastAPI, agent: LangGraphAgent, path: str = "/"
+):
     """Adds an endpoint to the FastAPI app."""
 
     @app.post(path)
@@ -22,8 +24,7 @@ def add_langgraph_fastapi_endpoint(app: FastAPI, agent: LangGraphAgent, path: st
                 yield encoder.encode(event)
 
         return StreamingResponse(
-            event_generator(),
-            media_type=encoder.get_content_type()
+            event_generator(), media_type=encoder.get_content_type()
         )
 
     @app.get(f"{path}/health")
@@ -33,5 +34,5 @@ def add_langgraph_fastapi_endpoint(app: FastAPI, agent: LangGraphAgent, path: st
             "status": "ok",
             "agent": {
                 "name": agent.name,
-            }
+            },
         }

@@ -1,15 +1,15 @@
 """Tests for text message events with different roles."""
 
 import unittest
-from pydantic import ValidationError
+
 from ag_ui.core import (
     EventType,
-    TextMessageStartEvent,
+    TextMessageChunkEvent,
     TextMessageContentEvent,
     TextMessageEndEvent,
-    TextMessageChunkEvent,
-    Role,
+    TextMessageStartEvent,
 )
+from pydantic import ValidationError
 
 # Test all available roles for text messages (excluding "tool")
 TEXT_MESSAGE_ROLES = ["developer", "system", "assistant", "user"]
@@ -26,7 +26,7 @@ class TestTextMessageRoles(unittest.TestCase):
                     message_id="test-msg",
                     role=role,
                 )
-                
+
                 self.assertEqual(event.type, EventType.TEXT_MESSAGE_START)
                 self.assertEqual(event.message_id, "test-msg")
                 self.assertEqual(event.role, role)
@@ -40,7 +40,7 @@ class TestTextMessageRoles(unittest.TestCase):
                     role=role,
                     delta=f"Hello from {role}",
                 )
-                
+
                 self.assertEqual(event.type, EventType.TEXT_MESSAGE_CHUNK)
                 self.assertEqual(event.message_id, "test-msg")
                 self.assertEqual(event.role, role)
@@ -52,7 +52,7 @@ class TestTextMessageRoles(unittest.TestCase):
             message_id="test-msg",
             delta="Hello without role",
         )
-        
+
         self.assertEqual(event.type, EventType.TEXT_MESSAGE_CHUNK)
         self.assertEqual(event.message_id, "test-msg")
         self.assertIsNone(event.role)
@@ -61,7 +61,7 @@ class TestTextMessageRoles(unittest.TestCase):
     def test_multiple_messages_different_roles(self) -> None:
         """Test creating multiple messages with different roles."""
         events = []
-        
+
         for role in TEXT_MESSAGE_ROLES:
             start_event = TextMessageStartEvent(
                 message_id=f"msg-{role}",
@@ -74,12 +74,12 @@ class TestTextMessageRoles(unittest.TestCase):
             end_event = TextMessageEndEvent(
                 message_id=f"msg-{role}",
             )
-            
+
             events.extend([start_event, content_event, end_event])
-        
+
         # Verify we have 3 events per role
         self.assertEqual(len(events), len(TEXT_MESSAGE_ROLES) * 3)
-        
+
         # Verify each start event has the correct role
         for i, role in enumerate(TEXT_MESSAGE_ROLES):
             start_event = events[i * 3]
@@ -95,13 +95,13 @@ class TestTextMessageRoles(unittest.TestCase):
                     message_id="test-msg",
                     role=role,
                 )
-                
+
                 # Convert to dict and back
                 event_dict = event.model_dump()
                 self.assertEqual(event_dict["role"], role)
                 self.assertEqual(event_dict["type"], EventType.TEXT_MESSAGE_START)
                 self.assertEqual(event_dict["message_id"], "test-msg")
-                
+
                 # Recreate from dict
                 new_event = TextMessageStartEvent(**event_dict)
                 self.assertEqual(new_event.role, role)
@@ -115,14 +115,14 @@ class TestTextMessageRoles(unittest.TestCase):
                 message_id="test-msg",
                 role="invalid_role",  # type: ignore
             )
-        
+
         # Test that 'tool' role is not allowed for text messages
         with self.assertRaises(ValidationError):
             TextMessageStartEvent(
                 message_id="test-msg",
                 role="tool",  # type: ignore
             )
-        
+
         # Test that 'tool' role is not allowed for chunks either
         with self.assertRaises(ValidationError):
             TextMessageChunkEvent(
@@ -136,7 +136,7 @@ class TestTextMessageRoles(unittest.TestCase):
         event = TextMessageStartEvent(
             message_id="test-msg",
         )
-        
+
         self.assertEqual(event.type, EventType.TEXT_MESSAGE_START)
         self.assertEqual(event.message_id, "test-msg")
         self.assertEqual(event.role, "assistant")  # Should default to assistant

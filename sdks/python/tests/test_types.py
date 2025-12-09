@@ -1,21 +1,20 @@
 import unittest
-from pydantic import ValidationError
-from pydantic import TypeAdapter
 
 from ag_ui.core.types import (
-    FunctionCall,
-    ToolCall,
-    DeveloperMessage,
-    SystemMessage,
-    AssistantMessage,
-    UserMessage,
-    ToolMessage,
     ActivityMessage,
+    AssistantMessage,
+    BinaryInputContent,
+    DeveloperMessage,
+    FunctionCall,
     Message,
     RunAgentInput,
+    SystemMessage,
     TextInputContent,
-    BinaryInputContent,
+    ToolCall,
+    ToolMessage,
+    UserMessage,
 )
+from pydantic import TypeAdapter, ValidationError
 
 
 class TestBaseTypes(unittest.TestCase):
@@ -29,10 +28,7 @@ class TestBaseTypes(unittest.TestCase):
 
     def test_message_serialization(self):
         """Test serialization of a basic message"""
-        user_msg = UserMessage(
-            id="msg_123",
-            content="Hello, world!"
-        )
+        user_msg = UserMessage(id="msg_123", content="Hello, world!")
         serialized = user_msg.model_dump(by_alias=True)
         self.assertEqual(serialized["id"], "msg_123")
         self.assertEqual(serialized["role"], "user")
@@ -41,8 +37,7 @@ class TestBaseTypes(unittest.TestCase):
     def test_tool_call_serialization(self):
         """Test camel case serialization for ConfiguredBaseModel subclasses"""
         tool_call = ToolCall(
-            id="call_123",
-            function=FunctionCall(name="test_function", arguments="{}")
+            id="call_123", function=FunctionCall(name="test_function", arguments="{}")
         )
         serialized = tool_call.model_dump(by_alias=True)
         # Should convert function to camelCase
@@ -51,9 +46,7 @@ class TestBaseTypes(unittest.TestCase):
     def test_tool_message_camel_case(self):
         """Test camel case serialization for ToolMessage"""
         tool_msg = ToolMessage(
-            id="tool_123",
-            content="Tool result",
-            tool_call_id="call_456"
+            id="tool_123", content="Tool result", tool_call_id="call_456"
         )
         serialized = tool_msg.model_dump(by_alias=True)
         self.assertIn("toolCallId", serialized)
@@ -84,7 +77,7 @@ class TestBaseTypes(unittest.TestCase):
             "id": "tool_789",
             "role": "tool",
             "content": "Result from tool",
-            "toolCallId": "call_123"  # camelCase field name
+            "toolCallId": "call_123",  # camelCase field name
         }
 
         # Parse the JSON data into a ToolMessage instance
@@ -102,10 +95,7 @@ class TestBaseTypes(unittest.TestCase):
         json_data = {
             "id": "call_abc",
             "type": "function",
-            "function": {
-                "name": "get_weather",
-                "arguments": '{"location":"New York"}'
-            }
+            "function": {"name": "get_weather", "arguments": '{"location":"New York"}'},
         }
 
         # Parse JSON into a ToolCall instance
@@ -119,20 +109,14 @@ class TestBaseTypes(unittest.TestCase):
 
     def test_developer_message(self):
         """Test creating and serializing a developer message"""
-        msg = DeveloperMessage(
-            id="dev_123",
-            content="Developer note"
-        )
+        msg = DeveloperMessage(id="dev_123", content="Developer note")
         serialized = msg.model_dump(by_alias=True)
         self.assertEqual(serialized["role"], "developer")
         self.assertEqual(serialized["content"], "Developer note")
 
     def test_system_message(self):
         """Test creating and serializing a system message"""
-        msg = SystemMessage(
-            id="sys_123",
-            content="System instruction"
-        )
+        msg = SystemMessage(id="sys_123", content="System instruction")
         serialized = msg.model_dump(by_alias=True)
         self.assertEqual(serialized["role"], "system")
         self.assertEqual(serialized["content"], "System instruction")
@@ -141,12 +125,10 @@ class TestBaseTypes(unittest.TestCase):
         """Test creating and serializing an assistant message with tool calls"""
         tool_call = ToolCall(
             id="call_456",
-            function=FunctionCall(name="get_data", arguments='{"param": "value"}')
+            function=FunctionCall(name="get_data", arguments='{"param": "value"}'),
         )
         msg = AssistantMessage(
-            id="asst_123",
-            content="Assistant response",
-            tool_calls=[tool_call]
+            id="asst_123", content="Assistant response", tool_calls=[tool_call]
         )
         serialized = msg.model_dump(by_alias=True)
         self.assertEqual(serialized["role"], "assistant")
@@ -156,10 +138,7 @@ class TestBaseTypes(unittest.TestCase):
 
     def test_user_message(self):
         """Test creating and serializing a user message"""
-        msg = UserMessage(
-            id="user_123",
-            content="User query"
-        )
+        msg = UserMessage(id="user_123", content="User query")
         serialized = msg.model_dump(by_alias=True)
         self.assertEqual(serialized["role"], "user")
         self.assertEqual(serialized["content"], "User query")
@@ -168,7 +147,9 @@ class TestBaseTypes(unittest.TestCase):
         """Test creating and serializing a multimodal user message"""
         contents = [
             TextInputContent(text="Check this out"),
-            BinaryInputContent(mime_type="image/png", url="https://example.com/image.png"),
+            BinaryInputContent(
+                mime_type="image/png", url="https://example.com/image.png"
+            ),
         ]
         msg = UserMessage(
             id="user_multi",
@@ -181,13 +162,14 @@ class TestBaseTypes(unittest.TestCase):
         self.assertEqual(serialized["content"][0]["type"], "text")
         self.assertEqual(serialized["content"][0]["text"], "Check this out")
         self.assertEqual(serialized["content"][1]["mimeType"], "image/png")
-        self.assertEqual(serialized["content"][1]["url"], "https://example.com/image.png")
+        self.assertEqual(
+            serialized["content"][1]["url"], "https://example.com/image.png"
+        )
 
     def test_binary_input_requires_payload_source(self):
         """Binary content must specify at least one delivery channel"""
         with self.assertRaises(ValidationError):
             BinaryInputContent(mime_type="image/png")
-
 
     def test_message_union_deserialization(self):
         """Test that the Message union correctly deserializes to the appropriate type"""
@@ -201,10 +183,10 @@ class TestBaseTypes(unittest.TestCase):
             {"id": "asst_789", "role": "assistant", "content": "Assistant response"},
             {"id": "user_101", "role": "user", "content": "User query"},
             {
-                "id": "tool_202", 
-                "role": "tool", 
-                "content": "Tool result", 
-                "toolCallId": "call_303"
+                "id": "tool_202",
+                "role": "tool",
+                "content": "Tool result",
+                "toolCallId": "call_303",
             },
             {
                 "id": "activity_404",
@@ -245,10 +227,10 @@ class TestBaseTypes(unittest.TestCase):
                     "type": "function",
                     "function": {
                         "name": "search_data",
-                        "arguments": '{"query": "python"}'
-                    }
+                        "arguments": '{"query": "python"}',
+                    },
                 }
-            ]
+            ],
         }
 
         msg = message_adapter.validate_python(data)
@@ -269,19 +251,19 @@ class TestBaseTypes(unittest.TestCase):
                 {
                     "id": "sys_001",
                     "role": "system",
-                    "content": "You are a helpful assistant."
+                    "content": "You are a helpful assistant.",
                 },
                 # User message
                 {
                     "id": "user_001",
                     "role": "user",
-                    "content": "Can you help me analyze this data?"
+                    "content": "Can you help me analyze this data?",
                 },
                 # Developer message
                 {
                     "id": "dev_001",
                     "role": "developer",
-                    "content": "The assistant should provide a detailed analysis."
+                    "content": "The assistant should provide a detailed analysis.",
                 },
                 # Assistant message with tool calls
                 {
@@ -294,17 +276,17 @@ class TestBaseTypes(unittest.TestCase):
                             "type": "function",
                             "function": {
                                 "name": "analyze_data",
-                                "arguments": '{"dataset": "sales_2023", "metrics": ["mean", "median"]}' # pylint: disable=line-too-long
-                            }
+                                "arguments": '{"dataset": "sales_2023", "metrics": ["mean", "median"]}',  # pylint: disable=line-too-long
+                            },
                         }
-                    ]
+                    ],
                 },
                 # Tool message responding to tool call
                 {
                     "id": "tool_001",
                     "role": "tool",
                     "content": '{"mean": 42.5, "median": 38.0}',
-                    "toolCallId": "call_001"
+                    "toolCallId": "call_001",
                 },
                 # Another user message
                 {
@@ -315,10 +297,10 @@ class TestBaseTypes(unittest.TestCase):
                         {
                             "type": "binary",
                             "mimeType": "image/png",
-                            "url": "https://example.com/results-chart.png"
-                        }
-                    ]
-                }
+                            "url": "https://example.com/results-chart.png",
+                        },
+                    ],
+                },
             ],
             "tools": [
                 {
@@ -328,10 +310,10 @@ class TestBaseTypes(unittest.TestCase):
                         "type": "object",
                         "properties": {
                             "dataset": {"type": "string"},
-                            "metrics": {"type": "array", "items": {"type": "string"}}
+                            "metrics": {"type": "array", "items": {"type": "string"}},
                         },
-                        "required": ["dataset"]
-                    }
+                        "required": ["dataset"],
+                    },
                 },
                 {
                     "name": "fetch_data",
@@ -340,26 +322,23 @@ class TestBaseTypes(unittest.TestCase):
                         "type": "object",
                         "properties": {
                             "source": {"type": "string"},
-                            "query": {"type": "string"}
+                            "query": {"type": "string"},
                         },
-                        "required": ["source", "query"]
-                    }
-                }
+                        "required": ["source", "query"],
+                    },
+                },
             ],
             "context": [
                 {
                     "description": "User preferences",
-                    "value": '{"theme": "dark", "language": "English"}'
+                    "value": '{"theme": "dark", "language": "English"}',
                 },
-                {
-                    "description": "Environment",
-                    "value": "production"
-                }
+                {"description": "Environment", "value": "production"},
             ],
             "forwardedProps": {
                 "api_version": "v1",
-                "custom_settings": {"max_tokens": 500}
-            }
+                "custom_settings": {"max_tokens": 500},
+            },
         }
 
         # Deserialize using TypeAdapter
@@ -381,14 +360,20 @@ class TestBaseTypes(unittest.TestCase):
         self.assertIsInstance(run_agent_input.messages[5], UserMessage)
 
         # Verify specific message content
-        self.assertEqual(run_agent_input.messages[0].content, "You are a helpful assistant.")
-        self.assertEqual(run_agent_input.messages[1].content, "Can you help me analyze this data?")
+        self.assertEqual(
+            run_agent_input.messages[0].content, "You are a helpful assistant."
+        )
+        self.assertEqual(
+            run_agent_input.messages[1].content, "Can you help me analyze this data?"
+        )
         multimodal_content = run_agent_input.messages[5].content
         self.assertIsInstance(multimodal_content, list)
         self.assertEqual(multimodal_content[0].type, "text")
         self.assertEqual(multimodal_content[0].text, "Can you explain these results?")
         self.assertEqual(multimodal_content[1].mime_type, "image/png")
-        self.assertEqual(multimodal_content[1].url, "https://example.com/results-chart.png")
+        self.assertEqual(
+            multimodal_content[1].url, "https://example.com/results-chart.png"
+        )
 
         # Verify assistant message with tool call
         assistant_msg = run_agent_input.messages[3]
@@ -412,7 +397,9 @@ class TestBaseTypes(unittest.TestCase):
 
         # Verify forwarded props
         self.assertEqual(run_agent_input.forwarded_props["api_version"], "v1")
-        self.assertEqual(run_agent_input.forwarded_props["custom_settings"]["max_tokens"], 500)
+        self.assertEqual(
+            run_agent_input.forwarded_props["custom_settings"]["max_tokens"], 500
+        )
 
     def test_validation_errors(self):
         """Test validation errors for various message types"""
@@ -422,7 +409,7 @@ class TestBaseTypes(unittest.TestCase):
         invalid_role_data = {
             "id": "msg_123",
             "role": "invalid_role",  # Invalid role
-            "content": "Hello"
+            "content": "Hello",
         }
         with self.assertRaises(ValidationError):
             message_adapter.validate_python(invalid_role_data)
@@ -431,7 +418,7 @@ class TestBaseTypes(unittest.TestCase):
         missing_id_data = {
             # Missing "id" field
             "role": "user",
-            "content": "Hello"
+            "content": "Hello",
         }
         with self.assertRaises(ValidationError):
             UserMessage.model_validate(missing_id_data)
@@ -441,7 +428,7 @@ class TestBaseTypes(unittest.TestCase):
             "id": "msg_456",
             "role": "user",
             "content": "Hello",
-            "extra_field": "This is allowed for backwards compatibility"  # Extra field
+            "extra_field": "This is allowed for backwards compatibility",  # Extra field
         }
         # Should not raise an error - extra fields are allowed
         msg = UserMessage.model_validate(extra_field_data)
@@ -466,9 +453,9 @@ class TestBaseTypes(unittest.TestCase):
             "runId": "run_empty",
             "state": {},
             "messages": [],  # Empty messages
-            "tools": [],     # Empty tools
-            "context": [],   # Empty context
-            "forwardedProps": {}
+            "tools": [],  # Empty tools
+            "context": [],  # Empty context
+            "forwardedProps": {},
         }
 
         # Deserialize and verify
@@ -493,26 +480,26 @@ class TestBaseTypes(unittest.TestCase):
                     "type": "function",
                     "function": {
                         "name": "get_weather",
-                        "arguments": '{"location": "New York"}'
-                    }
+                        "arguments": '{"location": "New York"}',
+                    },
                 },
                 {
                     "id": "call_2",
                     "type": "function",
                     "function": {
                         "name": "search_database",
-                        "arguments": '{"query": "recent sales"}'
-                    }
+                        "arguments": '{"query": "recent sales"}',
+                    },
                 },
                 {
                     "id": "call_3",
                     "type": "function",
                     "function": {
                         "name": "calculate",
-                        "arguments": '{"operation": "sum", "values": [1, 2, 3, 4, 5]}'
-                    }
-                }
-            ]
+                        "arguments": '{"operation": "sum", "values": [1, 2, 3, 4, 5]}',
+                    },
+                },
+            ],
         }
 
         # Deserialize and verify
@@ -541,13 +528,9 @@ class TestBaseTypes(unittest.TestCase):
                 {
                     "id": "sys_rt",
                     "role": "system",
-                    "content": "You are a helpful assistant."
+                    "content": "You are a helpful assistant.",
                 },
-                {
-                    "id": "user_rt",
-                    "role": "user",
-                    "content": "Help me with my task."
-                },
+                {"id": "user_rt", "role": "user", "content": "Help me with my task."},
                 {
                     "id": "asst_rt",
                     "role": "assistant",
@@ -556,33 +539,20 @@ class TestBaseTypes(unittest.TestCase):
                         {
                             "id": "call_rt",
                             "type": "function",
-                            "function": {
-                                "name": "get_task_info",
-                                "arguments": "{}"
-                            }
+                            "function": {"name": "get_task_info", "arguments": "{}"},
                         }
-                    ]
-                }
+                    ],
+                },
             ],
             "tools": [
                 {
                     "name": "get_task_info",
                     "description": "Get task information",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {}
-                    }
+                    "parameters": {"type": "object", "properties": {}},
                 }
             ],
-            "context": [
-                {
-                    "description": "Session",
-                    "value": "123456"
-                }
-            ],
-            "forwardedProps": {
-                "timestamp": 1648214400
-            }
+            "context": [{"description": "Session", "value": "123456"}],
+            "forwardedProps": {"timestamp": 1648214400},
         }
 
         # Deserialize
@@ -608,7 +578,7 @@ class TestBaseTypes(unittest.TestCase):
         self.assertEqual(len(deserialized_obj.messages[2].tool_calls), 1)
         self.assertEqual(
             deserialized_obj.messages[2].tool_calls[0].function.name,
-            original_obj.messages[2].tool_calls[0].function.name
+            original_obj.messages[2].tool_calls[0].function.name,
         )
 
     def test_content_edge_cases(self):
@@ -618,7 +588,7 @@ class TestBaseTypes(unittest.TestCase):
         empty_content_data = {
             "id": "msg_empty",
             "role": "user",
-            "content": ""  # Empty string
+            "content": "",  # Empty string
         }
         empty_msg = UserMessage.model_validate(empty_content_data)
         self.assertEqual(empty_msg.content, "")
@@ -632,12 +602,9 @@ class TestBaseTypes(unittest.TestCase):
                 {
                     "id": "call_null",
                     "type": "function",
-                    "function": {
-                        "name": "get_data",
-                        "arguments": "{}"
-                    }
+                    "function": {"name": "get_data", "arguments": "{}"},
                 }
-            ]
+            ],
         }
         null_msg = AssistantMessage.model_validate(null_content_data)
         self.assertIsNone(null_msg.content)
@@ -647,17 +614,19 @@ class TestBaseTypes(unittest.TestCase):
         large_content_data = {
             "id": "msg_large",
             "role": "user",
-            "content": large_content
+            "content": large_content,
         }
         large_msg = UserMessage.model_validate(large_content_data)
         self.assertEqual(len(large_msg.content), 10000)
 
         # Test content with special characters
-        special_chars = "Special chars: 你好 こんにちは 안녕하세요 👋 🌍 \n\t\"'\\/<>{}[]"
+        special_chars = (
+            "Special chars: 你好 こんにちは 안녕하세요 👋 🌍 \n\t\"'\\/<>{}[]"
+        )
         special_chars_data = {
             "id": "msg_special",
             "role": "user",
-            "content": special_chars
+            "content": special_chars,
         }
         special_msg = UserMessage.model_validate(special_chars_data)
         self.assertEqual(special_msg.content, special_chars)
@@ -669,7 +638,7 @@ class TestBaseTypes(unittest.TestCase):
             "id": "user_named",
             "role": "user",
             "content": "Hello",
-            "name": "John"
+            "name": "John",
         }
         user_msg = UserMessage.model_validate(user_with_name_data)
         self.assertEqual(user_msg.name, "John")
@@ -679,7 +648,7 @@ class TestBaseTypes(unittest.TestCase):
             "id": "asst_named",
             "role": "assistant",
             "content": "Hello",
-            "name": "AI Assistant"
+            "name": "AI Assistant",
         }
         assistant_msg = AssistantMessage.model_validate(assistant_with_name_data)
         self.assertEqual(assistant_msg.name, "AI Assistant")
@@ -703,7 +672,7 @@ class TestBaseTypes(unittest.TestCase):
             "messages": [],
             "tools": [],
             "context": [],
-            "forwardedProps": {}
+            "forwardedProps": {},
         }
         scalar_input = RunAgentInput.model_validate(scalar_state_data)
         self.assertEqual(scalar_input.state, "ACTIVE")
@@ -717,19 +686,13 @@ class TestBaseTypes(unittest.TestCase):
                     "preferences": {
                         "theme": "dark",
                         "notifications": True,
-                        "filters": ["important", "urgent"]
-                    }
+                        "filters": ["important", "urgent"],
+                    },
                 },
-                "metrics": {
-                    "requests": 42,
-                    "tokens": {
-                        "input": 1024,
-                        "output": 2048
-                    }
-                }
+                "metrics": {"requests": 42, "tokens": {"input": 1024, "output": 2048}},
             },
             "timestamp": 1648214400,
-            "version": "1.0.0"
+            "version": "1.0.0",
         }
 
         complex_state_data = {
@@ -739,15 +702,19 @@ class TestBaseTypes(unittest.TestCase):
             "messages": [],
             "tools": [],
             "context": [],
-            "forwardedProps": {}
+            "forwardedProps": {},
         }
         complex_input = RunAgentInput.model_validate(complex_state_data)
 
         # Verify nested state structure is preserved
         self.assertEqual(complex_input.state["session"]["id"], "sess_123")
         self.assertEqual(complex_input.state["session"]["user"]["id"], "user_456")
-        self.assertEqual(complex_input.state["session"]["user"]["preferences"]["theme"], "dark")
-        self.assertEqual(complex_input.state["session"]["metrics"]["tokens"]["output"], 2048)
+        self.assertEqual(
+            complex_input.state["session"]["user"]["preferences"]["theme"], "dark"
+        )
+        self.assertEqual(
+            complex_input.state["session"]["metrics"]["tokens"]["output"], 2048
+        )
         self.assertEqual(complex_input.state["version"], "1.0.0")
 
         # Verify serialization round-trip works with complex state
@@ -755,7 +722,7 @@ class TestBaseTypes(unittest.TestCase):
         deserialized = RunAgentInput.model_validate(serialized)
         self.assertEqual(
             deserialized.state["session"]["user"]["preferences"]["filters"],
-            ["important", "urgent"]
+            ["important", "urgent"],
         )
 
 

@@ -1,33 +1,55 @@
 import json
 import re
-from enum import Enum
-
-from pydantic import TypeAdapter
-from pydantic_core import PydanticSerializationError
-from typing import List, Any, Dict, Union
-from dataclasses import is_dataclass, asdict
+from dataclasses import asdict, is_dataclass
 from datetime import date, datetime
+from enum import Enum
+from typing import Any, Dict, List, Union
 
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
+from ag_ui.core import (
+    AssistantMessage as AGUIAssistantMessage,
+)
+from ag_ui.core import (
+    BinaryInputContent,
+    TextInputContent,
+)
+from ag_ui.core import (
+    FunctionCall as AGUIFunctionCall,
+)
 from ag_ui.core import (
     Message as AGUIMessage,
-    UserMessage as AGUIUserMessage,
-    AssistantMessage as AGUIAssistantMessage,
-    SystemMessage as AGUISystemMessage,
-    ToolMessage as AGUIToolMessage,
-    ToolCall as AGUIToolCall,
-    FunctionCall as AGUIFunctionCall,
-    TextInputContent,
-    BinaryInputContent,
 )
-from .types import State, SchemaKeys, LangGraphReasoning
+from ag_ui.core import (
+    SystemMessage as AGUISystemMessage,
+)
+from ag_ui.core import (
+    ToolCall as AGUIToolCall,
+)
+from ag_ui.core import (
+    ToolMessage as AGUIToolMessage,
+)
+from ag_ui.core import (
+    UserMessage as AGUIUserMessage,
+)
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
+
+from .types import LangGraphReasoning, SchemaKeys, State
 
 DEFAULT_SCHEMA_KEYS = ["tools"]
 
-def filter_object_by_schema_keys(obj: Dict[str, Any], schema_keys: List[str]) -> Dict[str, Any]:
+
+def filter_object_by_schema_keys(
+    obj: Dict[str, Any], schema_keys: List[str]
+) -> Dict[str, Any]:
     if not obj:
         return {}
     return {k: v for k, v in obj.items() if k in schema_keys}
+
 
 def get_stream_payload_input(
     *,
@@ -37,29 +59,38 @@ def get_stream_payload_input(
 ) -> Union[State, None]:
     input_payload = state if mode == "start" else None
     if input_payload and schema_keys and schema_keys.get("input"):
-        input_payload = filter_object_by_schema_keys(input_payload, [*DEFAULT_SCHEMA_KEYS, *schema_keys["input"]])
+        input_payload = filter_object_by_schema_keys(
+            input_payload, [*DEFAULT_SCHEMA_KEYS, *schema_keys["input"]]
+        )
     return input_payload
+
 
 def stringify_if_needed(item: Any) -> str:
     if item is None:
-        return ''
+        return ""
     if isinstance(item, str):
         return item
     return json.dumps(item)
 
-def convert_langchain_multimodal_to_agui(content: List[Dict[str, Any]]) -> List[Union[TextInputContent, BinaryInputContent]]:
+
+def convert_langchain_multimodal_to_agui(
+    content: List[Dict[str, Any]],
+) -> List[Union[TextInputContent, BinaryInputContent]]:
     """Convert LangChain's multimodal content to AG-UI format."""
     agui_content = []
     for item in content:
         if isinstance(item, dict):
             if item.get("type") == "text":
-                agui_content.append(TextInputContent(
-                    type="text",
-                    text=item.get("text", "")
-                ))
+                agui_content.append(
+                    TextInputContent(type="text", text=item.get("text", ""))
+                )
             elif item.get("type") == "image_url":
                 image_url_data = item.get("image_url", {})
-                url = image_url_data.get("url", "") if isinstance(image_url_data, dict) else image_url_data
+                url = (
+                    image_url_data.get("url", "")
+                    if isinstance(image_url_data, dict)
+                    else image_url_data
+                )
 
                 # Parse data URLs to extract base64 data
                 if url.startswith("data:"):
@@ -67,21 +98,28 @@ def convert_langchain_multimodal_to_agui(content: List[Dict[str, Any]]) -> List[
                     parts = url.split(",", 1)
                     header = parts[0]
                     data = parts[1] if len(parts) > 1 else ""
-                    mime_type = header.split(":")[1].split(";")[0] if ":" in header else "image/png"
+                    mime_type = (
+                        header.split(":")[1].split(";")[0]
+                        if ":" in header
+                        else "image/png"
+                    )
 
-                    agui_content.append(BinaryInputContent(
-                        type="binary",
-                        mime_type=mime_type,
-                        data=data
-                    ))
+                    agui_content.append(
+                        BinaryInputContent(
+                            type="binary", mime_type=mime_type, data=data
+                        )
+                    )
                 else:
                     # Regular URL or ID
-                    agui_content.append(BinaryInputContent(
-                        type="binary",
-                        mime_type="image/png",  # Default MIME type
-                        url=url
-                    ))
+                    agui_content.append(
+                        BinaryInputContent(
+                            type="binary",
+                            mime_type="image/png",  # Default MIME type
+                            url=url,
+                        )
+                    )
     return agui_content
+
 
 def langchain_messages_to_agui(messages: List[BaseMessage]) -> List[AGUIMessage]:
     agui_messages: List[AGUIMessage] = []
@@ -93,12 +131,14 @@ def langchain_messages_to_agui(messages: List[BaseMessage]) -> List[AGUIMessage]
             else:
                 content = stringify_if_needed(resolve_message_content(message.content))
 
-            agui_messages.append(AGUIUserMessage(
-                id=str(message.id),
-                role="user",
-                content=content,
-                name=message.name,
-            ))
+            agui_messages.append(
+                AGUIUserMessage(
+                    id=str(message.id),
+                    role="user",
+                    content=content,
+                    name=message.name,
+                )
+            )
         elif isinstance(message, AIMessage):
             tool_calls = None
             if message.tool_calls:
@@ -114,40 +154,52 @@ def langchain_messages_to_agui(messages: List[BaseMessage]) -> List[AGUIMessage]
                     for tc in message.tool_calls
                 ]
 
-            agui_messages.append(AGUIAssistantMessage(
-                id=str(message.id),
-                role="assistant",
-                content=stringify_if_needed(resolve_message_content(message.content)),
-                tool_calls=tool_calls,
-                name=message.name,
-            ))
+            agui_messages.append(
+                AGUIAssistantMessage(
+                    id=str(message.id),
+                    role="assistant",
+                    content=stringify_if_needed(
+                        resolve_message_content(message.content)
+                    ),
+                    tool_calls=tool_calls,
+                    name=message.name,
+                )
+            )
         elif isinstance(message, SystemMessage):
-            agui_messages.append(AGUISystemMessage(
-                id=str(message.id),
-                role="system",
-                content=stringify_if_needed(resolve_message_content(message.content)),
-                name=message.name,
-            ))
+            agui_messages.append(
+                AGUISystemMessage(
+                    id=str(message.id),
+                    role="system",
+                    content=stringify_if_needed(
+                        resolve_message_content(message.content)
+                    ),
+                    name=message.name,
+                )
+            )
         elif isinstance(message, ToolMessage):
-            agui_messages.append(AGUIToolMessage(
-                id=str(message.id),
-                role="tool",
-                content=stringify_if_needed(resolve_message_content(message.content)),
-                tool_call_id=message.tool_call_id,
-            ))
+            agui_messages.append(
+                AGUIToolMessage(
+                    id=str(message.id),
+                    role="tool",
+                    content=stringify_if_needed(
+                        resolve_message_content(message.content)
+                    ),
+                    tool_call_id=message.tool_call_id,
+                )
+            )
         else:
             raise TypeError(f"Unsupported message type: {type(message)}")
     return agui_messages
 
-def convert_agui_multimodal_to_langchain(content: List[Union[TextInputContent, BinaryInputContent]]) -> List[Dict[str, Any]]:
+
+def convert_agui_multimodal_to_langchain(
+    content: List[Union[TextInputContent, BinaryInputContent]],
+) -> List[Dict[str, Any]]:
     """Convert AG-UI multimodal content to LangChain's multimodal format."""
     langchain_content = []
     for item in content:
         if isinstance(item, TextInputContent):
-            langchain_content.append({
-                "type": "text",
-                "text": item.text
-            })
+            langchain_content.append({"type": "text", "text": item.text})
         elif isinstance(item, BinaryInputContent):
             # LangChain uses image_url format (OpenAI-style)
             content_dict = {"type": "image_url"}
@@ -157,7 +209,9 @@ def convert_agui_multimodal_to_langchain(content: List[Union[TextInputContent, B
                 content_dict["image_url"] = {"url": item.url}
             elif item.data:
                 # Construct data URL from base64 data
-                content_dict["image_url"] = {"url": f"data:{item.mime_type};base64,{item.data}"}
+                content_dict["image_url"] = {
+                    "url": f"data:{item.mime_type};base64,{item.data}"
+                }
             elif item.id:
                 # Use id as a reference (some providers may support this)
                 content_dict["image_url"] = {"url": item.id}
@@ -165,6 +219,7 @@ def convert_agui_multimodal_to_langchain(content: List[Union[TextInputContent, B
             langchain_content.append(content_dict)
 
     return langchain_content
+
 
 def agui_messages_to_langchain(messages: List[AGUIMessage]) -> List[BaseMessage]:
     langchain_messages = []
@@ -179,42 +234,55 @@ def agui_messages_to_langchain(messages: List[AGUIMessage]) -> List[BaseMessage]
             else:
                 content = str(message.content)
 
-            langchain_messages.append(HumanMessage(
-                id=message.id,
-                content=content,
-                name=message.name,
-            ))
+            langchain_messages.append(
+                HumanMessage(
+                    id=message.id,
+                    content=content,
+                    name=message.name,
+                )
+            )
         elif role == "assistant":
             tool_calls = []
             if hasattr(message, "tool_calls") and message.tool_calls:
                 for tc in message.tool_calls:
-                    tool_calls.append({
-                        "id": tc.id,
-                        "name": tc.function.name,
-                        "args": json.loads(tc.function.arguments) if hasattr(tc, "function") and tc.function.arguments else {},
-                        "type": "tool_call",
-                    })
-            langchain_messages.append(AIMessage(
-                id=message.id,
-                content=message.content or "",
-                tool_calls=tool_calls,
-                name=message.name,
-            ))
+                    tool_calls.append(
+                        {
+                            "id": tc.id,
+                            "name": tc.function.name,
+                            "args": json.loads(tc.function.arguments)
+                            if hasattr(tc, "function") and tc.function.arguments
+                            else {},
+                            "type": "tool_call",
+                        }
+                    )
+            langchain_messages.append(
+                AIMessage(
+                    id=message.id,
+                    content=message.content or "",
+                    tool_calls=tool_calls,
+                    name=message.name,
+                )
+            )
         elif role == "system":
-            langchain_messages.append(SystemMessage(
-                id=message.id,
-                content=message.content,
-                name=message.name,
-            ))
+            langchain_messages.append(
+                SystemMessage(
+                    id=message.id,
+                    content=message.content,
+                    name=message.name,
+                )
+            )
         elif role == "tool":
-            langchain_messages.append(ToolMessage(
-                id=message.id,
-                content=message.content,
-                tool_call_id=message.tool_call_id,
-            ))
+            langchain_messages.append(
+                ToolMessage(
+                    id=message.id,
+                    content=message.content,
+                    tool_call_id=message.tool_call_id,
+                )
+            )
         else:
             raise ValueError(f"Unsupported message role: {role}")
     return langchain_messages
+
 
 def resolve_reasoning_content(chunk: Any) -> LangGraphReasoning | None:
     content = chunk.content
@@ -226,9 +294,7 @@ def resolve_reasoning_content(chunk: Any) -> LangGraphReasoning | None:
         if not content[0].get("thinking"):
             return None
         return LangGraphReasoning(
-            text=content[0]["thinking"],
-            type="text",
-            index=content[0].get("index", 0)
+            text=content[0]["thinking"], type="text", index=content[0].get("index", 0)
         )
 
     # OpenAI reasoning response
@@ -240,12 +306,11 @@ def resolve_reasoning_content(chunk: Any) -> LangGraphReasoning | None:
             if not data or not data.get("text"):
                 return None
             return LangGraphReasoning(
-                type="text",
-                text=data["text"],
-                index=data.get("index", 0)
+                type="text", text=data["text"], index=data.get("index", 0)
             )
 
     return None
+
 
 def resolve_message_content(content: Any) -> str | None:
     if not content:
@@ -255,7 +320,14 @@ def resolve_message_content(content: Any) -> str | None:
         return content
 
     if isinstance(content, list) and content:
-        content_text = next((c.get("text") for c in content if isinstance(c, dict) and c.get("type") == "text"), None)
+        content_text = next(
+            (
+                c.get("text")
+                for c in content
+                if isinstance(c, dict) and c.get("type") == "text"
+            ),
+            None,
+        )
         return content_text
 
     return None
@@ -290,21 +362,24 @@ def flatten_user_content(content: Any) -> str:
 
     return str(content)
 
+
 def camel_to_snake(name):
-    return re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+
 
 def json_safe_stringify(o):
-    if is_dataclass(o):          # dataclasses like Flight(...)
+    if is_dataclass(o):  # dataclasses like Flight(...)
         return asdict(o)
-    if hasattr(o, "model_dump"): # pydantic v2
+    if hasattr(o, "model_dump"):  # pydantic v2
         return o.model_dump()
-    if hasattr(o, "dict"):       # pydantic v1
+    if hasattr(o, "dict"):  # pydantic v1
         return o.dict()
-    if hasattr(o, "__dict__"):   # plain objects
+    if hasattr(o, "__dict__"):  # plain objects
         return vars(o)
     if isinstance(o, (datetime, date)):
         return o.isoformat()
-    return str(o)                # last resort
+    return str(o)  # last resort
+
 
 def make_json_safe(value: Any, _seen: set[int] | None = None) -> Any:
     """
@@ -341,8 +416,7 @@ def make_json_safe(value: Any, _seen: set[int] | None = None) -> Any:
     if isinstance(value, dict):
         _seen.add(obj_id)
         return {
-            make_json_safe(k, _seen): make_json_safe(v, _seen)
-            for k, v in value.items()
+            make_json_safe(k, _seen): make_json_safe(v, _seen) for k, v in value.items()
         }
 
     # --- 4. Iterable containers -------------------------------------------
