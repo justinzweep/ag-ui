@@ -281,23 +281,22 @@ class TestHandleThinkingEvent(unittest.TestCase):
         self.assertEqual(result, [])
 
     def test_reasoning_id_format(self):
-        """Should generate proper reasoning_id format."""
+        """Should generate proper reasoning_id format: {run_id}-{index}."""
         reasoning_data: LangGraphReasoning = {"type": "text", "text": "Test", "index": 0}
         list(self.agent.handle_thinking_event(reasoning_data))
 
         reasoning_id = self.agent.active_run["thinking_process"]["reasoning_id"]
-        self.assertTrue(reasoning_id.startswith("reasoning-"))
-        self.assertIn("test-run-123", reasoning_id)
-        self.assertIn("-0", reasoning_id)  # index appended
+        # ID format is {run_id}-{index} without any prefix
+        self.assertEqual(reasoning_id, "test-run-123-0")
 
-    def test_message_id_derived_from_reasoning_id(self):
-        """Should derive message_id from reasoning_id."""
+    def test_message_id_equals_reasoning_id(self):
+        """Should set message_id equal to reasoning_id (no prefix)."""
         reasoning_data: LangGraphReasoning = {"type": "text", "text": "Test", "index": 0}
         list(self.agent.handle_thinking_event(reasoning_data))
 
         message_id = self.agent.active_run["thinking_process"]["message_id"]
         reasoning_id = self.agent.active_run["thinking_process"]["reasoning_id"]
-        self.assertEqual(message_id, f"msg-{reasoning_id}")
+        self.assertEqual(message_id, reasoning_id)
 
 
 if __name__ == "__main__":
