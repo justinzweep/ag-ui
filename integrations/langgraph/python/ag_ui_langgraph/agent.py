@@ -697,7 +697,8 @@ class LangGraphAgent:
             )
 
             if reasoning_data:
-                self.handle_thinking_event(reasoning_data)
+                for event in self.handle_thinking_event(reasoning_data):
+                    yield event
                 return
 
             if (
