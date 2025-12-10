@@ -707,7 +707,7 @@ class LangGraphAgent:
             ):
                 thinking_process = self.active_run["thinking_process"]
                 reasoning_id = thinking_process.get(
-                    "reasoning_id", f"reasoning-{self.active_run['run_id']}"
+                    "reasoning_id", f"reasoning-{self.active_run['id']}"
                 )
                 message_id = thinking_process.get("message_id", f"msg-{reasoning_id}")
 
@@ -1030,7 +1030,7 @@ class LangGraphAgent:
             if self.active_run["thinking_process"].get("type"):
                 thinking_process = self.active_run["thinking_process"]
                 message_id = thinking_process.get(
-                    "message_id", f"msg-reasoning-{self.active_run['run_id']}"
+                    "message_id", f"msg-reasoning-{self.active_run['id']}"
                 )
                 yield self._dispatch_event(
                     ReasoningMessageEndEvent(
@@ -1040,7 +1040,7 @@ class LangGraphAgent:
                 )
             thinking_process = self.active_run["thinking_process"]
             reasoning_id = thinking_process.get(
-                "reasoning_id", f"reasoning-{self.active_run['run_id']}"
+                "reasoning_id", f"reasoning-{self.active_run['id']}"
             )
             message_id = thinking_process.get("message_id", f"msg-{reasoning_id}")
 
@@ -1060,7 +1060,7 @@ class LangGraphAgent:
 
         if not self.active_run.get("thinking_process"):
             reasoning_id = (
-                f"reasoning-{self.active_run['run_id']}-{thinking_step_index}"
+                f"reasoning-{self.active_run['id']}-{thinking_step_index}"
             )
             # Try to extract encrypted content from chunk if available
             encrypted_content = None
