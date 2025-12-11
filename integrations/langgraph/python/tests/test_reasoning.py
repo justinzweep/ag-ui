@@ -338,7 +338,7 @@ class TestInterleaveReasoningMessages(unittest.TestCase):
         self.assertEqual(result[1].id, "2")
 
     def test_reasoning_inserted_before_assistant_message(self):
-        """Should insert reasoning before corresponding assistant message."""
+        """Should insert reasoning before corresponding assistant message (single turn)."""
         from ag_ui_langgraph.utils import interleave_reasoning_messages
         from ag_ui.core import UserMessage, AssistantMessage, ReasoningMessage
 
@@ -357,8 +357,43 @@ class TestInterleaveReasoningMessages(unittest.TestCase):
         self.assertEqual(result[1].role, "reasoning")  # Inserted before assistant
         self.assertEqual(result[2].role, "assistant")
 
-    def test_multiple_reasoning_blocks(self):
-        """Should handle multiple reasoning blocks for multiple assistant messages."""
+    def test_turn_two_inserts_before_last_assistant(self):
+        """Turn 2: Should insert reasoning before LAST assistant, not first.
+
+        This is the key multi-turn bug fix test. reasoning_messages only contains
+        reasoning from the current run, so it should go before the LAST assistant.
+        """
+        from ag_ui_langgraph.utils import interleave_reasoning_messages
+        from ag_ui.core import UserMessage, AssistantMessage, ReasoningMessage
+
+        # Turn 2: History has assistant1, current run produces reasoning2 + assistant2
+        messages = [
+            UserMessage(id="1", role="user", content="Q1"),
+            AssistantMessage(id="2", role="assistant", content="A1"),
+            UserMessage(id="3", role="user", content="Q2"),
+            AssistantMessage(id="4", role="assistant", content="A2"),
+        ]
+        reasoning_messages = [
+            ReasoningMessage(id="r2", role="reasoning", content=["think2"]),
+        ]
+
+        result = interleave_reasoning_messages(messages, reasoning_messages)
+
+        # reasoning2 should be before assistant2, NOT before assistant1
+        self.assertEqual(len(result), 5)
+        self.assertEqual(result[0].role, "user")
+        self.assertEqual(result[0].id, "1")
+        self.assertEqual(result[1].role, "assistant")  # A1 - no reasoning before it
+        self.assertEqual(result[1].id, "2")
+        self.assertEqual(result[2].role, "user")
+        self.assertEqual(result[2].id, "3")
+        self.assertEqual(result[3].role, "reasoning")  # r2 before A2
+        self.assertEqual(result[3].id, "r2")
+        self.assertEqual(result[4].role, "assistant")
+        self.assertEqual(result[4].id, "4")
+
+    def test_turn_three_inserts_before_last_assistant(self):
+        """Turn 3: Should insert reasoning before LAST assistant only."""
         from ag_ui_langgraph.utils import interleave_reasoning_messages
         from ag_ui.core import UserMessage, AssistantMessage, ReasoningMessage
 
@@ -367,21 +402,131 @@ class TestInterleaveReasoningMessages(unittest.TestCase):
             AssistantMessage(id="2", role="assistant", content="A1"),
             UserMessage(id="3", role="user", content="Q2"),
             AssistantMessage(id="4", role="assistant", content="A2"),
+            UserMessage(id="5", role="user", content="Q3"),
+            AssistantMessage(id="6", role="assistant", content="A3"),
         ]
         reasoning_messages = [
-            ReasoningMessage(id="r1", role="reasoning", content=["think1"]),
-            ReasoningMessage(id="r2", role="reasoning", content=["think2"]),
+            ReasoningMessage(id="r3", role="reasoning", content=["think3"]),
         ]
 
         result = interleave_reasoning_messages(messages, reasoning_messages)
 
-        self.assertEqual(len(result), 6)
+        # reasoning3 should be before assistant3 only
+        self.assertEqual(len(result), 7)
+        self.assertEqual(result[0].id, "1")  # user1
+        self.assertEqual(result[1].id, "2")  # assistant1 (no reasoning)
+        self.assertEqual(result[2].id, "3")  # user2
+        self.assertEqual(result[3].id, "4")  # assistant2 (no reasoning)
+        self.assertEqual(result[4].id, "5")  # user3
+        self.assertEqual(result[5].id, "r3")  # reasoning3 before assistant3
+        self.assertEqual(result[6].id, "6")  # assistant3
+
+    def test_multiple_reasoning_same_turn_agent_loop(self):
+        """Agent loop: Multiple reasoning blocks in same turn (e.g., tool calls).
+
+        When an agent makes tool calls, there may be multiple assistant messages
+        in a single turn, each with its own reasoning.
+        """
+        from ag_ui_langgraph.utils import interleave_reasoning_messages
+        from ag_ui.core import UserMessage, AssistantMessage, ReasoningMessage
+
+        # Single turn with tool call + final response
+        messages = [
+            UserMessage(id="1", role="user", content="Calculate 2+2"),
+            AssistantMessage(id="2", role="assistant", content="Let me use a tool"),
+            AssistantMessage(id="3", role="assistant", content="The answer is 4"),
+        ]
+        reasoning_messages = [
+            ReasoningMessage(id="r1", role="reasoning", content=["thinking about tool"]),
+            ReasoningMessage(id="r2", role="reasoning", content=["thinking about result"]),
+        ]
+
+        result = interleave_reasoning_messages(messages, reasoning_messages)
+
+        self.assertEqual(len(result), 5)
         self.assertEqual(result[0].role, "user")
-        self.assertEqual(result[1].role, "reasoning")  # r1 before A1
+        self.assertEqual(result[1].role, "reasoning")  # r1 before first assistant
+        self.assertEqual(result[1].id, "r1")
+        self.assertEqual(result[2].role, "assistant")  # tool call
+        self.assertEqual(result[3].role, "reasoning")  # r2 before second assistant
+        self.assertEqual(result[3].id, "r2")
+        self.assertEqual(result[4].role, "assistant")  # final response
+
+    def test_tool_use_in_turn_two(self):
+        """Turn 2 with tool use: reasoning should appear before current run's assistants only.
+
+        This tests the combination of multi-turn + tool use scenarios.
+        """
+        from ag_ui_langgraph.utils import interleave_reasoning_messages
+        from ag_ui.core import UserMessage, AssistantMessage, ReasoningMessage
+
+        # Turn 1 history + Turn 2 with tool call
+        messages = [
+            UserMessage(id="1", role="user", content="Hello"),
+            AssistantMessage(id="2", role="assistant", content="Hi!"),  # Turn 1 response
+            UserMessage(id="3", role="user", content="What's 2+2?"),
+            AssistantMessage(id="4", role="assistant", content="Let me calculate"),  # Turn 2 tool call
+            AssistantMessage(id="5", role="assistant", content="The answer is 4"),  # Turn 2 final
+        ]
+        # Current run produced 2 reasoning blocks (for the 2 assistant messages in turn 2)
+        reasoning_messages = [
+            ReasoningMessage(id="r1", role="reasoning", content=["need to use calculator"]),
+            ReasoningMessage(id="r2", role="reasoning", content=["got result, format response"]),
+        ]
+
+        result = interleave_reasoning_messages(messages, reasoning_messages)
+
+        # Reasoning should only appear before turn 2's assistant messages
+        self.assertEqual(len(result), 7)
+        self.assertEqual(result[0].id, "1")  # user1
+        self.assertEqual(result[1].id, "2")  # assistant1 (turn 1, no reasoning)
+        self.assertEqual(result[2].id, "3")  # user2
+        self.assertEqual(result[3].id, "r1")  # reasoning before tool call
+        self.assertEqual(result[4].id, "4")  # assistant2 (tool call)
+        self.assertEqual(result[5].id, "r2")  # reasoning before final
+        self.assertEqual(result[6].id, "5")  # assistant3 (final)
+
+    def test_no_assistant_messages_returns_unchanged(self):
+        """Should return unchanged if no assistant messages to pair with."""
+        from ag_ui_langgraph.utils import interleave_reasoning_messages
+        from ag_ui.core import UserMessage, ReasoningMessage
+
+        messages = [
+            UserMessage(id="1", role="user", content="Hello"),
+        ]
+        reasoning_messages = [
+            ReasoningMessage(id="r1", role="reasoning", content=["thinking..."]),
+        ]
+
+        result = interleave_reasoning_messages(messages, reasoning_messages)
+
+        # Can't interleave - no assistant message to pair with
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].id, "1")
+
+    def test_more_reasoning_than_assistants(self):
+        """Should handle case where there are more reasoning blocks than assistants."""
+        from ag_ui_langgraph.utils import interleave_reasoning_messages
+        from ag_ui.core import UserMessage, AssistantMessage, ReasoningMessage
+
+        messages = [
+            UserMessage(id="1", role="user", content="Hello"),
+            AssistantMessage(id="2", role="assistant", content="Hi"),
+        ]
+        reasoning_messages = [
+            ReasoningMessage(id="r1", role="reasoning", content=["think1"]),
+            ReasoningMessage(id="r2", role="reasoning", content=["think2"]),
+            ReasoningMessage(id="r3", role="reasoning", content=["think3"]),
+        ]
+
+        result = interleave_reasoning_messages(messages, reasoning_messages)
+
+        # Only one assistant, so only first reasoning gets inserted
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[0].role, "user")
+        self.assertEqual(result[1].role, "reasoning")
+        self.assertEqual(result[1].id, "r1")  # Only first reasoning used
         self.assertEqual(result[2].role, "assistant")
-        self.assertEqual(result[3].role, "user")
-        self.assertEqual(result[4].role, "reasoning")  # r2 before A2
-        self.assertEqual(result[5].role, "assistant")
 
 
 class TestReasoningToLangChainConversion(unittest.TestCase):

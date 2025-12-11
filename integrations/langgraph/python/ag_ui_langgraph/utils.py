@@ -202,21 +202,43 @@ def interleave_reasoning_messages(
     """
     Insert reasoning messages before their corresponding assistant messages.
 
-    Reasoning should appear immediately before the assistant response it precedes.
-    This maintains the logical flow: user asks -> model reasons -> model responds.
+    Since reasoning_messages only contains reasoning from the CURRENT run,
+    we insert them before the LAST N assistant messages (where N = len(reasoning_messages)),
+    not the first N. This ensures reasoning appears before the correct assistant
+    message in multi-turn conversations.
+
+    Example (Turn 2):
+        agui_messages = [user1, assistant1, user2, assistant2]
+        reasoning_messages = [reasoning2]  # Only from current run
+        result = [user1, assistant1, user2, reasoning2, assistant2]
     """
     if not reasoning_messages:
         return agui_messages
 
+    # Find indices of all assistant messages
+    assistant_indices = [
+        i
+        for i, msg in enumerate(agui_messages)
+        if hasattr(msg, "role") and msg.role == "assistant"
+    ]
+
+    if not assistant_indices:
+        return agui_messages
+
+    # Insert before the LAST N assistant messages (where N = num reasoning messages)
+    num_reasoning = len(reasoning_messages)
+    start_assistant_index = max(0, len(assistant_indices) - num_reasoning)
+    target_assistant_indices = set(assistant_indices[start_assistant_index:])
+
     result: List[AGUIMessage] = []
     reasoning_iter = iter(reasoning_messages)
-    current_reasoning = next(reasoning_iter, None)
 
-    for msg in agui_messages:
-        # Insert reasoning before assistant message
-        if hasattr(msg, "role") and msg.role == "assistant" and current_reasoning:
-            result.append(current_reasoning)
-            current_reasoning = next(reasoning_iter, None)
+    for i, msg in enumerate(agui_messages):
+        # Insert reasoning before the target assistant messages
+        if i in target_assistant_indices:
+            reasoning = next(reasoning_iter, None)
+            if reasoning:
+                result.append(reasoning)
         result.append(msg)
 
     return result
