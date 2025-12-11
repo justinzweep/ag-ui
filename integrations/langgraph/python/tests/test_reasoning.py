@@ -384,5 +384,66 @@ class TestInterleaveReasoningMessages(unittest.TestCase):
         self.assertEqual(result[5].role, "assistant")
 
 
+class TestReasoningToLangChainConversion(unittest.TestCase):
+    """Tests for converting reasoning messages to LangChain format."""
+
+    def test_reasoning_message_converts_to_ai_message_with_reasoning_block(self):
+        """ReasoningMessage should convert to AIMessage with ReasoningContentBlock."""
+        from ag_ui_langgraph.utils import agui_messages_to_langchain
+        from ag_ui.core import ReasoningMessage
+        from langchain_core.messages import AIMessage
+
+        messages = [
+            ReasoningMessage(id="r1", role="reasoning", content=["Let me think...", " Analyzing..."]),
+        ]
+
+        result = agui_messages_to_langchain(messages)
+
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], AIMessage)
+        self.assertEqual(result[0].id, "r1")
+        # Content should be list with ReasoningContentBlock
+        self.assertEqual(len(result[0].content), 1)
+        self.assertEqual(result[0].content[0]["type"], "reasoning")
+        self.assertEqual(result[0].content[0]["reasoning"], "Let me think... Analyzing...")
+
+    def test_reasoning_message_with_single_item_list(self):
+        """ReasoningMessage with single item list should convert correctly."""
+        from ag_ui_langgraph.utils import agui_messages_to_langchain
+        from ag_ui.core import ReasoningMessage
+        from langchain_core.messages import AIMessage
+
+        messages = [
+            ReasoningMessage(id="r1", role="reasoning", content=["Single item content"]),
+        ]
+
+        result = agui_messages_to_langchain(messages)
+
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], AIMessage)
+        self.assertEqual(result[0].content[0]["reasoning"], "Single item content")
+
+    def test_mixed_messages_with_reasoning(self):
+        """Should correctly convert mixed message types including reasoning."""
+        from ag_ui_langgraph.utils import agui_messages_to_langchain
+        from ag_ui.core import UserMessage, AssistantMessage, ReasoningMessage
+        from langchain_core.messages import HumanMessage, AIMessage
+
+        messages = [
+            UserMessage(id="u1", role="user", content="Hello"),
+            ReasoningMessage(id="r1", role="reasoning", content=["Thinking..."]),
+            AssistantMessage(id="a1", role="assistant", content="Hi there!"),
+        ]
+
+        result = agui_messages_to_langchain(messages)
+
+        self.assertEqual(len(result), 3)
+        self.assertIsInstance(result[0], HumanMessage)
+        self.assertIsInstance(result[1], AIMessage)  # Reasoning as AIMessage
+        self.assertEqual(result[1].content[0]["type"], "reasoning")
+        self.assertIsInstance(result[2], AIMessage)  # Assistant as AIMessage
+        self.assertEqual(result[2].content, "Hi there!")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -309,6 +309,16 @@ def agui_messages_to_langchain(messages: List[AGUIMessage]) -> List[BaseMessage]
                     tool_call_id=message.tool_call_id,
                 )
             )
+        elif role == "reasoning":
+            # Convert reasoning to AIMessage with ReasoningContentBlock
+            # AG-UI ReasoningMessage has content as List[str], join them
+            reasoning_text = "".join(message.content) if isinstance(message.content, list) else str(message.content)
+            langchain_messages.append(
+                AIMessage(
+                    id=message.id,
+                    content=[{"type": "reasoning", "reasoning": reasoning_text}],
+                )
+            )
         else:
             raise ValueError(f"Unsupported message role: {role}")
     return langchain_messages
