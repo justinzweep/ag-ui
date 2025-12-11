@@ -310,15 +310,11 @@ def agui_messages_to_langchain(messages: List[AGUIMessage]) -> List[BaseMessage]
                 )
             )
         elif role == "reasoning":
-            # Convert reasoning to AIMessage with ReasoningContentBlock
-            # AG-UI ReasoningMessage has content as List[str], join them
-            reasoning_text = "".join(message.content) if isinstance(message.content, list) else str(message.content)
-            langchain_messages.append(
-                AIMessage(
-                    id=message.id,
-                    content=[{"type": "reasoning", "reasoning": reasoning_text}],
-                )
-            )
+            # Skip reasoning messages when converting to LangChain
+            # Reasoning is AG-UI specific for client display and should not be sent
+            # back to LLM providers (Anthropic expects "thinking" not "reasoning",
+            # and thinking content is typically not included in conversation history)
+            continue
         else:
             raise ValueError(f"Unsupported message role: {role}")
     return langchain_messages
