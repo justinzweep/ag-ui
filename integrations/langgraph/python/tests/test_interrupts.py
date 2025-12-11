@@ -287,6 +287,73 @@ class TestRunFinishedEventWithInterrupt(unittest.TestCase):
         self.assertIsNone(event.outcome)
 
 
+class TestPrepareStreamResumeHandling(unittest.TestCase):
+    """Tests for prepare_stream method's resume handling."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        from ag_ui_langgraph.agent import LangGraphAgent
+
+        self.mock_graph = MagicMock()
+        self.mock_graph.get_input_jsonschema.return_value = {"properties": {}}
+        self.mock_graph.get_output_jsonschema.return_value = {"properties": {}}
+        mock_config_schema = MagicMock()
+        mock_config_schema.schema.return_value = {"properties": {}}
+        self.mock_graph.config_schema.return_value = mock_config_schema
+        self.mock_graph.aget_state = AsyncMock()
+
+        self.agent = LangGraphAgent(name="test-agent", graph=self.mock_graph)
+
+    async def _prepare_stream_with_active_interrupt(self, input_data):
+        """Helper to call prepare_stream with an active interrupt state."""
+        interrupt = MockInterrupt(value={"reason": "human_approval"})
+        task = MockTask(interrupts=[interrupt])
+        agent_state = MockAgentState(tasks=[task], values={"messages": []})
+        config = {"configurable": {"thread_id": input_data.thread_id}}
+
+        # Initialize active_run as _handle_stream_events does
+        self.agent.active_run = {
+            "id": input_data.run_id,
+            "thread_id": input_data.thread_id,
+            "thinking_process": None,
+            "node_name": None,
+            "has_function_streaming": False,
+            "mode": "start",
+        }
+
+        return await self.agent.prepare_stream(input_data, agent_state, config)
+
+    def test_prepare_stream_recognizes_input_resume(self):
+        """prepare_stream should recognize resume from input.resume field, not just forwarded_props."""
+        import asyncio
+
+        async def run_test():
+            resume = Resume(interrupt_id="int-123", payload={"approved": True})
+            input_data = RunAgentInput(
+                thread_id="thread-1",
+                run_id="run-1",
+                state={},
+                messages=[],
+                tools=[],
+                context=[],
+                forwarded_props={},
+                resume=resume,
+            )
+
+            result = await self._prepare_stream_with_active_interrupt(input_data)
+
+            # When resume_input is recognized, prepare_stream should NOT return events_to_dispatch
+            # because the request is a legitimate resume, not a "re-fetch pending interrupt" request
+            events_to_dispatch = result.get("events_to_dispatch")
+
+            # If events_to_dispatch is set, it means prepare_stream didn't recognize the resume
+            # which is the bug we're fixing
+            self.assertIsNone(events_to_dispatch,
+                "prepare_stream should recognize input.resume and not return events_to_dispatch")
+
+        asyncio.run(run_test())
+
+
 class TestCompleteInterruptResumeFlow(unittest.TestCase):
     """Integration tests for complete interrupt/resume flow."""
 

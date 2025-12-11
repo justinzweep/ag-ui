@@ -234,4 +234,85 @@ describe("HttpAgent", () => {
       signal: expect.any(AbortSignal),
     });
   });
+
+  it("should include resume parameter in HTTP request body when provided", () => {
+    // Setup mock implementation
+    const mockObservable = of({
+      type: HttpEventType.HEADERS,
+      status: 200,
+      headers: new Headers(),
+    });
+    (runHttpRequest as jest.Mock).mockReturnValue(mockObservable);
+
+    // Configure test agent
+    const agent = new HttpAgent({
+      url: "https://api.example.com/v1/chat",
+      headers: {},
+    });
+
+    // Prepare input with resume parameter
+    const resumePayload = {
+      interruptId: "int-abc123",
+      payload: { approved: true },
+    };
+
+    const input = {
+      threadId: agent.threadId,
+      runId: "mock-run-id",
+      tools: [],
+      context: [],
+      forwardedProps: {},
+      state: agent.state,
+      messages: [],
+      resume: resumePayload,
+    };
+
+    // Call run method directly
+    agent.run(input);
+
+    // Verify the body contains the resume parameter
+    const callArgs = (runHttpRequest as jest.Mock).mock.calls[0];
+    const requestBody = JSON.parse(callArgs[1].body);
+    expect(requestBody.resume).toEqual(resumePayload);
+  });
+
+  it("should correctly prepare RunAgentInput with resume parameter", () => {
+    // Configure test agent
+    const agent = new HttpAgent({
+      url: "https://api.example.com/v1/chat",
+      headers: {},
+    });
+
+    // Access the protected method via type assertion
+    const prepareRunAgentInput = (agent as any).prepareRunAgentInput.bind(agent);
+
+    // Test with resume parameter
+    const input = prepareRunAgentInput({
+      resume: {
+        interruptId: "int-123",
+        payload: { approved: true },
+      },
+    });
+
+    expect(input.resume).toEqual({
+      interruptId: "int-123",
+      payload: { approved: true },
+    });
+  });
+
+  it("should not include resume in RunAgentInput when not provided", () => {
+    // Configure test agent
+    const agent = new HttpAgent({
+      url: "https://api.example.com/v1/chat",
+      headers: {},
+    });
+
+    // Access the protected method via type assertion
+    const prepareRunAgentInput = (agent as any).prepareRunAgentInput.bind(agent);
+
+    // Test without resume parameter
+    const input = prepareRunAgentInput({});
+
+    expect(input.resume).toBeUndefined();
+  });
 });

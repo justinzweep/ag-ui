@@ -15,5 +15,5 @@ export interface HttpAgentConfig extends AgentConfig {
 }
 
 export type RunAgentParameters = Partial<
-  Pick<RunAgentInput, "runId" | "tools" | "context" | "forwardedProps">
+  Pick<RunAgentInput, "runId" | "tools" | "context" | "forwardedProps" | "resume">
 >;

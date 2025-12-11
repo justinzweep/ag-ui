@@ -28,6 +28,11 @@ import {
   ActivitySnapshotEvent,
   ActivityDeltaEvent,
   ActivityMessage,
+  ReasoningStartEvent,
+  ReasoningMessageStartEvent,
+  ReasoningMessageContentEvent,
+  ReasoningMessageEndEvent,
+  ReasoningEndEvent,
 } from "@ag-ui/core";
 import { mergeMap, mergeAll, defaultIfEmpty, concatMap } from "rxjs/operators";
 import { of, EMPTY } from "rxjs";
@@ -51,6 +56,9 @@ export const defaultApplyEvents = (
   let messages = structuredClone_(agent.messages);
   let state = structuredClone_(input.state);
   let currentMutation: AgentStateMutation = {};
+
+  // Reasoning message tracking
+  let reasoningMessageBuffer = "";
 
   const applyMutation = (mutation: AgentStateMutation) => {
     if (mutation.messages !== undefined) {
@@ -819,27 +827,109 @@ export const defaultApplyEvents = (
         }
 
         case EventType.REASONING_START: {
-          // Pass through - reasoning blocks don't modify state directly
+          const reasoningEvent = event as ReasoningStartEvent;
+          reasoningMessageBuffer = "";
+
+          const mutation = await runSubscribersWithMutation(
+            subscribers,
+            messages,
+            state,
+            (subscriber, messages, state) =>
+              subscriber.onReasoningStartEvent?.({
+                event: reasoningEvent,
+                messages,
+                state,
+                agent,
+                input,
+              }),
+          );
+          applyMutation(mutation);
           return emitUpdates();
         }
 
         case EventType.REASONING_MESSAGE_START: {
-          // Pass through - reasoning messages are tracked but not added to messages yet
+          const reasoningEvent = event as ReasoningMessageStartEvent;
+          reasoningMessageBuffer = "";
+
+          const mutation = await runSubscribersWithMutation(
+            subscribers,
+            messages,
+            state,
+            (subscriber, messages, state) =>
+              subscriber.onReasoningMessageStartEvent?.({
+                event: reasoningEvent,
+                messages,
+                state,
+                agent,
+                input,
+              }),
+          );
+          applyMutation(mutation);
           return emitUpdates();
         }
 
         case EventType.REASONING_MESSAGE_CONTENT: {
-          // Pass through - content handled by subscribers
+          const reasoningEvent = event as ReasoningMessageContentEvent;
+          reasoningMessageBuffer += reasoningEvent.delta;
+
+          const mutation = await runSubscribersWithMutation(
+            subscribers,
+            messages,
+            state,
+            (subscriber, messages, state) =>
+              subscriber.onReasoningMessageContentEvent?.({
+                event: reasoningEvent,
+                messages,
+                state,
+                agent,
+                input,
+                reasoningMessageBuffer,
+              }),
+          );
+          applyMutation(mutation);
           return emitUpdates();
         }
 
         case EventType.REASONING_MESSAGE_END: {
-          // Pass through - reasoning messages can be added to state if needed
+          const reasoningEvent = event as ReasoningMessageEndEvent;
+
+          const mutation = await runSubscribersWithMutation(
+            subscribers,
+            messages,
+            state,
+            (subscriber, messages, state) =>
+              subscriber.onReasoningMessageEndEvent?.({
+                event: reasoningEvent,
+                messages,
+                state,
+                agent,
+                input,
+                reasoningMessageBuffer,
+              }),
+          );
+          applyMutation(mutation);
           return emitUpdates();
         }
 
         case EventType.REASONING_END: {
-          // Pass through - reasoning block complete
+          const reasoningEvent = event as ReasoningEndEvent;
+
+          const mutation = await runSubscribersWithMutation(
+            subscribers,
+            messages,
+            state,
+            (subscriber, messages, state) =>
+              subscriber.onReasoningEndEvent?.({
+                event: reasoningEvent,
+                messages,
+                state,
+                agent,
+                input,
+              }),
+          );
+          applyMutation(mutation);
+
+          reasoningMessageBuffer = "";
           return emitUpdates();
         }
 

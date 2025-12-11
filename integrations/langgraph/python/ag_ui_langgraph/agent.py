@@ -180,6 +180,15 @@ class LangGraphAgent:
             input=input, agent_state=agent_state, config=config
         )
 
+        # Check for early return path (e.g., re-fetching interrupt state without resume)
+        # BEFORE emitting RUN_STARTED to avoid duplicate RUN_STARTED events
+        events_to_dispatch = prepared_stream_response.get("events_to_dispatch", None)
+        if events_to_dispatch is not None and len(events_to_dispatch) > 0:
+            for event in events_to_dispatch:
+                yield self._dispatch_event(event)
+            return
+
+        # Only emit RUN_STARTED if we're doing a normal stream (not early return)
         yield self._dispatch_event(
             RunStartedEvent(
                 type=EventType.RUN_STARTED,
@@ -197,12 +206,6 @@ class LangGraphAgent:
         state = prepared_stream_response["state"]
         stream = prepared_stream_response["stream"]
         config = prepared_stream_response["config"]
-        events_to_dispatch = prepared_stream_response.get("events_to_dispatch", None)
-
-        if events_to_dispatch is not None and len(events_to_dispatch) > 0:
-            for event in events_to_dispatch:
-                yield self._dispatch_event(event)
-            return
 
         should_exit = False
         current_graph_state = state
@@ -373,7 +376,12 @@ class LangGraphAgent:
             else []
         )
         has_active_interrupts = len(interrupts) > 0
-        resume_input = forwarded_props.get("command", {}).get("resume", None)
+        # Support both new input.resume field and legacy forwardedProps.command.resume
+        resume_input = None
+        if input.resume and input.resume.payload is not None:
+            resume_input = input.resume.payload
+        elif forwarded_props:
+            resume_input = forwarded_props.get("command", {}).get("resume", None)
 
         self.active_run["schema_keys"] = self.get_schema_keys(config)
 

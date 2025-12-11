@@ -296,6 +296,7 @@ export abstract class AbstractAgent {
       forwardedProps: structuredClone_(parameters?.forwardedProps ?? {}),
       state: structuredClone_(this.state),
       messages: messagesWithoutActivity,
+      resume: parameters?.resume,
     };
   }
 
