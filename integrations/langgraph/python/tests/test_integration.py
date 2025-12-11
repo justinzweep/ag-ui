@@ -112,6 +112,7 @@ class TestReasoningIntegration(unittest.IsolatedAsyncioTestCase):
             "run_id": "run-123",
             "reasoning_process": None,
             "has_function_streaming": False,
+            "reasoning_messages": [],
         }
         self.agent.messages_in_process = {}
 

@@ -743,6 +743,16 @@ class LangGraphAgent:
                         message_id=reasoning_id,
                     )
                 )
+                # Create ReasoningMessage from accumulated content before clearing
+                accumulated = reasoning_process.get("accumulated_content", [])
+                if accumulated:
+                    self.active_run["reasoning_messages"].append(
+                        ReasoningMessage(
+                            id=reasoning_id,
+                            role="reasoning",
+                            content=accumulated,
+                        )
+                    )
                 self.active_run["reasoning_process"] = None
 
             if tool_call_used_to_predict_state:
