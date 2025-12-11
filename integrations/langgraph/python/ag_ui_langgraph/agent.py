@@ -60,7 +60,6 @@ from .utils import (
     camel_to_snake,
     filter_object_by_schema_keys,
     get_stream_payload_input,
-    interleave_reasoning_messages,
     json_safe_stringify,
     langchain_messages_to_agui,
     make_json_safe,
@@ -318,15 +317,13 @@ class LangGraphAgent:
         for ev in self.finalize_pending_reasoning():
             yield ev
 
-        # Build messages snapshot with reasoning interleaved
+        # Build messages snapshot - reasoning is now extracted from AIMessages automatically
         agui_messages = langchain_messages_to_agui(state_values.get("messages", []))
-        reasoning_messages = self.active_run.get("reasoning_messages", [])
-        all_messages = interleave_reasoning_messages(agui_messages, reasoning_messages)
 
         yield self._dispatch_event(
             MessagesSnapshotEvent(
                 type=EventType.MESSAGES_SNAPSHOT,
-                messages=all_messages,
+                messages=agui_messages,
             )
         )
 
@@ -750,7 +747,7 @@ class LangGraphAgent:
                         ReasoningMessage(
                             id=reasoning_id,
                             role="reasoning",
-                            content=accumulated,
+                            content="".join(accumulated),  # Join list into single string
                         )
                     )
                 self.active_run["reasoning_process"] = None
@@ -1093,7 +1090,7 @@ class LangGraphAgent:
                     ReasoningMessage(
                         id=reasoning_id,
                         role="reasoning",
-                        content=accumulated,
+                        content="".join(accumulated),  # Join list into single string
                     )
                 )
             self.active_run["reasoning_process"] = None
@@ -1179,7 +1176,7 @@ class LangGraphAgent:
                 ReasoningMessage(
                     id=reasoning_id,
                     role="reasoning",
-                    content=accumulated,
+                    content="".join(accumulated),  # Join list into single string
                 )
             )
         self.active_run["reasoning_process"] = None

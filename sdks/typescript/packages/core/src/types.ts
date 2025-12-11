@@ -99,7 +99,7 @@ export const ActivityMessageSchema = z.object({
 export const ReasoningMessageSchema = z.object({
   id: z.string(),
   role: z.literal("reasoning"),
-  content: z.array(z.string()),
+  content: z.string(),
   encryptedContent: z.string().optional(),
 });
 

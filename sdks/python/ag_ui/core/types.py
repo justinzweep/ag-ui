@@ -149,7 +149,7 @@ class ReasoningMessage(ConfiguredBaseModel):
 
     id: str
     role: Literal["reasoning"] = "reasoning"  # pyright: ignore[reportIncompatibleVariableOverride]
-    content: List[str]
+    content: str
     encrypted_content: Optional[str] = None
 
 

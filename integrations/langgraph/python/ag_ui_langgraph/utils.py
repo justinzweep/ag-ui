@@ -143,6 +143,24 @@ def langchain_messages_to_agui(messages: List[BaseMessage]) -> List[AGUIMessage]
                 )
             )
         elif isinstance(message, AIMessage):
+            # Extract reasoning blocks first (Anthropic: "thinking", OpenAI: "reasoning")
+            # These appear BEFORE the assistant message in the conversation
+            if isinstance(message.content, list):
+                reasoning_index = 0
+                for block in message.content:
+                    if isinstance(block, dict):
+                        # Anthropic uses "thinking", OpenAI uses "reasoning"
+                        reasoning_text = block.get("thinking") or block.get("reasoning")
+                        if reasoning_text:
+                            agui_messages.append(
+                                ReasoningMessage(
+                                    id=f"{message.id}-reasoning-{reasoning_index}",
+                                    role="reasoning",
+                                    content=reasoning_text,
+                                )
+                            )
+                            reasoning_index += 1
+
             tool_calls = None
             if message.tool_calls:
                 tool_calls = [
@@ -193,55 +211,6 @@ def langchain_messages_to_agui(messages: List[BaseMessage]) -> List[AGUIMessage]
         else:
             raise TypeError(f"Unsupported message type: {type(message)}")
     return agui_messages
-
-
-def interleave_reasoning_messages(
-    agui_messages: List[AGUIMessage],
-    reasoning_messages: List[ReasoningMessage],
-) -> List[AGUIMessage]:
-    """
-    Insert reasoning messages before their corresponding assistant messages.
-
-    Since reasoning_messages only contains reasoning from the CURRENT run,
-    we insert them before the LAST N assistant messages (where N = len(reasoning_messages)),
-    not the first N. This ensures reasoning appears before the correct assistant
-    message in multi-turn conversations.
-
-    Example (Turn 2):
-        agui_messages = [user1, assistant1, user2, assistant2]
-        reasoning_messages = [reasoning2]  # Only from current run
-        result = [user1, assistant1, user2, reasoning2, assistant2]
-    """
-    if not reasoning_messages:
-        return agui_messages
-
-    # Find indices of all assistant messages
-    assistant_indices = [
-        i
-        for i, msg in enumerate(agui_messages)
-        if hasattr(msg, "role") and msg.role == "assistant"
-    ]
-
-    if not assistant_indices:
-        return agui_messages
-
-    # Insert before the LAST N assistant messages (where N = num reasoning messages)
-    num_reasoning = len(reasoning_messages)
-    start_assistant_index = max(0, len(assistant_indices) - num_reasoning)
-    target_assistant_indices = set(assistant_indices[start_assistant_index:])
-
-    result: List[AGUIMessage] = []
-    reasoning_iter = iter(reasoning_messages)
-
-    for i, msg in enumerate(agui_messages):
-        # Insert reasoning before the target assistant messages
-        if i in target_assistant_indices:
-            reasoning = next(reasoning_iter, None)
-            if reasoning:
-                result.append(reasoning)
-        result.append(msg)
-
-    return result
 
 
 def convert_agui_multimodal_to_langchain(
