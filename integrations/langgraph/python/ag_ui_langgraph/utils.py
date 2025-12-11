@@ -19,6 +19,9 @@ from ag_ui.core import (
     Message as AGUIMessage,
 )
 from ag_ui.core import (
+    ReasoningMessage,
+)
+from ag_ui.core import (
     SystemMessage as AGUISystemMessage,
 )
 from ag_ui.core import (
@@ -190,6 +193,33 @@ def langchain_messages_to_agui(messages: List[BaseMessage]) -> List[AGUIMessage]
         else:
             raise TypeError(f"Unsupported message type: {type(message)}")
     return agui_messages
+
+
+def interleave_reasoning_messages(
+    agui_messages: List[AGUIMessage],
+    reasoning_messages: List[ReasoningMessage],
+) -> List[AGUIMessage]:
+    """
+    Insert reasoning messages before their corresponding assistant messages.
+
+    Reasoning should appear immediately before the assistant response it precedes.
+    This maintains the logical flow: user asks -> model reasons -> model responds.
+    """
+    if not reasoning_messages:
+        return agui_messages
+
+    result: List[AGUIMessage] = []
+    reasoning_iter = iter(reasoning_messages)
+    current_reasoning = next(reasoning_iter, None)
+
+    for msg in agui_messages:
+        # Insert reasoning before assistant message
+        if hasattr(msg, "role") and msg.role == "assistant" and current_reasoning:
+            result.append(current_reasoning)
+            current_reasoning = next(reasoning_iter, None)
+        result.append(msg)
+
+    return result
 
 
 def convert_agui_multimodal_to_langchain(

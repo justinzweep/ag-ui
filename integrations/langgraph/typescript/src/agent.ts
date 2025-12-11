@@ -18,7 +18,7 @@ import {
   LangGraphEventTypes,
   State,
   MessagesInProgressRecord,
-  ThinkingInProgress,
+  ReasoningInProgress,
   SchemaKeys,
   MessageInProgress,
   RunMetadata,
@@ -34,6 +34,12 @@ import {
   EventType,
   MessagesSnapshotEvent,
   RawEvent,
+  ReasoningEndEvent,
+  ReasoningMessage,
+  ReasoningMessageContentEvent,
+  ReasoningMessageEndEvent,
+  ReasoningMessageStartEvent,
+  ReasoningStartEvent,
   RunAgentInput,
   RunErrorEvent,
   RunFinishedEvent,
@@ -49,16 +55,12 @@ import {
   ToolCallEndEvent,
   ToolCallStartEvent,
   ToolCallResultEvent,
-  ThinkingTextMessageStartEvent,
-  ThinkingTextMessageContentEvent,
-  ThinkingTextMessageEndEvent,
-  ThinkingStartEvent,
-  ThinkingEndEvent,
 } from "@ag-ui/client";
 import { RunsStreamPayload } from "@langchain/langgraph-sdk/dist/types";
 import {
   aguiMessagesToLangChain,
   DEFAULT_SCHEMA_KEYS,
+  interleaveReasoningMessages,
   filterObjectBySchemaKeys,
   getStreamPayloadInput,
   langchainMessagesToAgui,
@@ -70,15 +72,15 @@ export type ProcessedEvents =
   | TextMessageStartEvent
   | TextMessageContentEvent
   | TextMessageEndEvent
-  | ThinkingTextMessageStartEvent
-  | ThinkingTextMessageContentEvent
-  | ThinkingTextMessageEndEvent
+  | ReasoningStartEvent
+  | ReasoningMessageStartEvent
+  | ReasoningMessageContentEvent
+  | ReasoningMessageEndEvent
+  | ReasoningEndEvent
   | ToolCallStartEvent
   | ToolCallArgsEvent
   | ToolCallEndEvent
   | ToolCallResultEvent
-  | ThinkingStartEvent
-  | ThinkingEndEvent
   | StateSnapshotEvent
   | StateDeltaEvent
   | MessagesSnapshotEvent
@@ -121,7 +123,7 @@ export class LangGraphAgent extends AbstractAgent {
   graphId: string;
   assistant?: Assistant;
   messagesInProcess: MessagesInProgressRecord;
-  thinkingProcess: null | ThinkingInProgress;
+  reasoningProcess: null | ReasoningInProgress;
   activeRun?: RunMetadata;
   // Stop control flags
   private cancelRequested: boolean = false;
@@ -138,7 +140,7 @@ export class LangGraphAgent extends AbstractAgent {
     this.agentName = config.agentName;
     this.graphId = config.graphId;
     this.assistantConfig = config.assistantConfig;
-    this.thinkingProcess = null;
+    this.reasoningProcess = null;
     this.client =
       config?.client ??
       new LangGraphClient({
@@ -169,6 +171,7 @@ export class LangGraphAgent extends AbstractAgent {
       id: input.runId,
       threadId: input.threadId,
       hasFunctionStreaming: false,
+      reasoningMessages: [],
     };
     // Reset cancel flags for this run
     this.cancelRequested = false;
@@ -579,9 +582,18 @@ export class LangGraphAgent extends AbstractAgent {
         type: EventType.STATE_SNAPSHOT,
         snapshot: this.getStateSnapshot(state),
       });
+
+      // Finalize any pending reasoning before creating the messages snapshot
+      this.finalizePendingReasoning();
+
+      // Build messages snapshot with reasoning interleaved
+      const aguiMessages = langchainMessagesToAgui((state.values as { messages: any[] }).messages ?? []);
+      const reasoningMessages = this.activeRun?.reasoningMessages ?? [];
+      const allMessages = interleaveReasoningMessages(aguiMessages, reasoningMessages);
+
       this.dispatchEvent({
         type: EventType.MESSAGES_SNAPSHOT,
-        messages: langchainMessagesToAgui((state.values as { messages: any[] }).messages ?? []),
+        messages: allMessages,
       });
 
       this.dispatchEvent({
@@ -630,18 +642,29 @@ export class LangGraphAgent extends AbstractAgent {
           hasCurrentStream && !currentStream?.toolCallId && !isMessageContentEvent;
 
         if (reasoningData) {
-          this.handleThinkingEvent(reasoningData);
+          this.handleReasoningEvent(reasoningData);
           break;
         }
 
-        if (!reasoningData && this.thinkingProcess) {
+        if (!reasoningData && this.reasoningProcess) {
+          if (this.reasoningProcess.type) {
+            this.dispatchEvent({
+              type: EventType.REASONING_MESSAGE_END,
+              messageId: this.reasoningProcess.reasoningId!,
+            });
+          }
           this.dispatchEvent({
-            type: EventType.THINKING_TEXT_MESSAGE_END,
+            type: EventType.REASONING_END,
+            messageId: this.reasoningProcess.reasoningId!,
           });
-          this.dispatchEvent({
-            type: EventType.THINKING_END,
-          });
-          this.thinkingProcess = null;
+          // Create ReasoningMessage from accumulated content
+          if (this.reasoningProcess.accumulatedContent?.length) {
+            this.activeRun!.reasoningMessages!.push({
+              id: this.reasoningProcess.reasoningId!,
+              content: this.reasoningProcess.accumulatedContent,
+            });
+          }
+          this.reasoningProcess = null;
         }
 
         if (toolCallUsedToPredictState) {
@@ -870,48 +893,95 @@ export class LangGraphAgent extends AbstractAgent {
     super.abortRun();
   }
 
-  handleThinkingEvent(reasoningData: LangGraphReasoning) {
+  handleReasoningEvent(reasoningData: LangGraphReasoning) {
     if (!reasoningData || !reasoningData.type || !reasoningData.text) {
       return;
     }
 
     const thinkingStepIndex = reasoningData.index;
 
-    if (this.thinkingProcess?.index && this.thinkingProcess.index !== thinkingStepIndex) {
-      if (this.thinkingProcess.type) {
+    if (this.reasoningProcess?.index && this.reasoningProcess.index !== thinkingStepIndex) {
+      if (this.reasoningProcess.type) {
         this.dispatchEvent({
-          type: EventType.THINKING_TEXT_MESSAGE_END,
+          type: EventType.REASONING_MESSAGE_END,
+          messageId: this.reasoningProcess.reasoningId!,
         });
       }
       this.dispatchEvent({
-        type: EventType.THINKING_END,
+        type: EventType.REASONING_END,
+        messageId: this.reasoningProcess.reasoningId!,
       });
-      this.thinkingProcess = null;
+      // Create ReasoningMessage from accumulated content
+      if (this.reasoningProcess.accumulatedContent?.length) {
+        this.activeRun!.reasoningMessages!.push({
+          id: this.reasoningProcess.reasoningId!,
+          content: this.reasoningProcess.accumulatedContent,
+        });
+      }
+      this.reasoningProcess = null;
     }
 
-    if (!this.thinkingProcess) {
+    if (!this.reasoningProcess) {
       // No thinking step yet. Start a new one
+      const reasoningId = `${this.activeRun!.id}-${thinkingStepIndex}`;
       this.dispatchEvent({
-        type: EventType.THINKING_START,
+        type: EventType.REASONING_START,
+        messageId: reasoningId,
       });
-      this.thinkingProcess = {
+      this.reasoningProcess = {
         index: thinkingStepIndex,
+        reasoningId,
+        accumulatedContent: [],
       };
     }
 
-    if (this.thinkingProcess.type !== reasoningData.type) {
+    if (this.reasoningProcess.type !== reasoningData.type) {
       this.dispatchEvent({
-        type: EventType.THINKING_TEXT_MESSAGE_START,
+        type: EventType.REASONING_MESSAGE_START,
+        messageId: this.reasoningProcess.reasoningId!,
+        role: "assistant",
       });
-      this.thinkingProcess.type = reasoningData.type;
+      this.reasoningProcess.type = reasoningData.type;
     }
 
-    if (this.thinkingProcess.type) {
+    if (this.reasoningProcess.type) {
+      // Accumulate content for ReasoningMessage
+      this.reasoningProcess.accumulatedContent!.push(reasoningData.text);
+
       this.dispatchEvent({
-        type: EventType.THINKING_TEXT_MESSAGE_CONTENT,
+        type: EventType.REASONING_MESSAGE_CONTENT,
+        messageId: this.reasoningProcess.reasoningId!,
         delta: reasoningData.text,
       });
     }
+  }
+
+  finalizePendingReasoning() {
+    if (!this.reasoningProcess) {
+      return;
+    }
+
+    // Emit end events for the pending reasoning
+    if (this.reasoningProcess.type) {
+      this.dispatchEvent({
+        type: EventType.REASONING_MESSAGE_END,
+        messageId: this.reasoningProcess.reasoningId!,
+      });
+    }
+
+    this.dispatchEvent({
+      type: EventType.REASONING_END,
+      messageId: this.reasoningProcess.reasoningId!,
+    });
+
+    // Create ReasoningMessage from accumulated content
+    if (this.reasoningProcess.accumulatedContent?.length) {
+      this.activeRun!.reasoningMessages!.push({
+        id: this.reasoningProcess.reasoningId!,
+        content: this.reasoningProcess.accumulatedContent,
+      });
+    }
+    this.reasoningProcess = null;
   }
 
   getStateSnapshot(threadState: ThreadState<State>) {

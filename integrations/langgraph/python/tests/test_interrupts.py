@@ -315,7 +315,7 @@ class TestPrepareStreamResumeHandling(unittest.TestCase):
         self.agent.active_run = {
             "id": input_data.run_id,
             "thread_id": input_data.thread_id,
-            "thinking_process": None,
+            "reasoning_process": None,
             "node_name": None,
             "has_function_streaming": False,
             "mode": "start",

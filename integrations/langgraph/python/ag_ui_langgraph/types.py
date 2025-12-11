@@ -36,8 +36,8 @@ SchemaKeys = TypedDict(
     },
 )
 
-ThinkingProcess = TypedDict(
-    "ThinkingProcess",
+ReasoningProcess = TypedDict(
+    "ReasoningProcess",
     {
         "index": int,
         "type": NotRequired[Optional[Literal["text"]]],
@@ -62,8 +62,8 @@ RunMetadata = TypedDict(
         "prev_node_name": NotRequired[Optional[str]],
         "exiting_node": NotRequired[bool],
         "manually_emitted_state": NotRequired[Optional[State]],
-        "thread_id": NotRequired[Optional[ThinkingProcess]],
-        "thinking_process": NotRequired[Optional[str]],
+        "thread_id": NotRequired[Optional[str]],
+        "reasoning_process": NotRequired[Optional[ReasoningProcess]],
         "has_function_streaming": NotRequired[bool],
     },
 )

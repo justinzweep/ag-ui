@@ -1,6 +1,6 @@
 import { Message as LangGraphMessage } from "@langchain/langgraph-sdk";
 import { State, SchemaKeys, LangGraphReasoning } from "./types";
-import { Message, ToolCall, TextInputContent, BinaryInputContent, InputContent , UserMessage} from "@ag-ui/client";
+import { Message, ReasoningMessage, ToolCall, TextInputContent, BinaryInputContent, InputContent , UserMessage} from "@ag-ui/client";
 
 export const DEFAULT_SCHEMA_KEYS = ["messages", "tools"];
 
@@ -164,6 +164,40 @@ export function langchainMessagesToAgui(messages: LangGraphMessage[]): Message[]
         throw new Error("message type returned from LangGraph is not supported.");
     }
   });
+}
+
+/**
+ * Insert reasoning messages before their corresponding assistant messages.
+ * Reasoning should appear immediately before the assistant response it precedes.
+ * This maintains the logical flow: user asks -> model reasons -> model responds.
+ */
+export function interleaveReasoningMessages(
+  aguiMessages: Message[],
+  reasoningMessages: Array<{ id: string; content: string[] }>
+): Message[] {
+  if (!reasoningMessages.length) {
+    return aguiMessages;
+  }
+
+  const result: Message[] = [];
+  const reasoningIter = reasoningMessages[Symbol.iterator]();
+  let currentReasoning = reasoningIter.next();
+
+  for (const msg of aguiMessages) {
+    // Insert reasoning before assistant message
+    if (msg.role === "assistant" && !currentReasoning.done) {
+      const reasoning = currentReasoning.value;
+      result.push({
+        id: reasoning.id,
+        role: "reasoning",
+        content: reasoning.content,
+      } as ReasoningMessage);
+      currentReasoning = reasoningIter.next();
+    }
+    result.push(msg);
+  }
+
+  return result;
 }
 
 export function aguiMessagesToLangChain(messages: Message[]): LangGraphMessage[] {

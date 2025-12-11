@@ -14,8 +14,8 @@ import { LangGraphReasoning } from "./types";
  */
 class MockLangGraphAgent {
   dispatchedEvents: Array<{ type: string; [key: string]: any }> = [];
-  thinkingProcess: { index?: number; type?: string } | null = null;
-  activeRun: { id: string } | null = { id: "test-run-123" };
+  reasoningProcess: { index?: number; type?: string; reasoningId?: string; accumulatedContent?: string[] } | null = null;
+  activeRun: { id: string; reasoningMessages: Array<{ id: string; content: string[] }> } | null = { id: "test-run-123", reasoningMessages: [] };
 
   dispatchEvent(event: { type: EventType; [key: string]: any }) {
     // Store event with type value preserved for comparisons
@@ -23,47 +23,66 @@ class MockLangGraphAgent {
     return true;
   }
 
-  handleThinkingEvent(reasoningData: LangGraphReasoning) {
+  handleReasoningEvent(reasoningData: LangGraphReasoning) {
     if (!reasoningData || !reasoningData.type || !reasoningData.text) {
       return;
     }
 
-    const thinkingStepIndex = reasoningData.index;
+    const reasoningStepIndex = reasoningData.index;
 
     if (
-      this.thinkingProcess?.index &&
-      this.thinkingProcess.index !== thinkingStepIndex
+      this.reasoningProcess?.index &&
+      this.reasoningProcess.index !== reasoningStepIndex
     ) {
-      if (this.thinkingProcess.type) {
+      if (this.reasoningProcess.type) {
         this.dispatchEvent({
-          type: EventType.THINKING_TEXT_MESSAGE_END,
+          type: EventType.REASONING_MESSAGE_END,
+          messageId: this.reasoningProcess.reasoningId!,
         });
       }
       this.dispatchEvent({
-        type: EventType.THINKING_END,
+        type: EventType.REASONING_END,
+        messageId: this.reasoningProcess.reasoningId!,
       });
-      this.thinkingProcess = null;
+      // Create ReasoningMessage from accumulated content
+      if (this.reasoningProcess.accumulatedContent?.length) {
+        this.activeRun!.reasoningMessages.push({
+          id: this.reasoningProcess.reasoningId!,
+          content: this.reasoningProcess.accumulatedContent,
+        });
+      }
+      this.reasoningProcess = null;
     }
 
-    if (!this.thinkingProcess) {
+    if (!this.reasoningProcess) {
+      const reasoningId = `${this.activeRun!.id}-${reasoningStepIndex}`;
       this.dispatchEvent({
-        type: EventType.THINKING_START,
+        type: EventType.REASONING_START,
+        messageId: reasoningId,
       });
-      this.thinkingProcess = {
-        index: thinkingStepIndex,
+      this.reasoningProcess = {
+        index: reasoningStepIndex,
+        reasoningId,
+        accumulatedContent: [],
       };
     }
 
-    if (this.thinkingProcess.type !== reasoningData.type) {
+    if (this.reasoningProcess.type !== reasoningData.type) {
       this.dispatchEvent({
-        type: EventType.THINKING_TEXT_MESSAGE_START,
+        type: EventType.REASONING_MESSAGE_START,
+        messageId: this.reasoningProcess.reasoningId!,
+        role: "assistant",
       });
-      this.thinkingProcess.type = reasoningData.type;
+      this.reasoningProcess.type = reasoningData.type;
     }
 
-    if (this.thinkingProcess.type) {
+    if (this.reasoningProcess.type) {
+      // Accumulate content for ReasoningMessage
+      this.reasoningProcess.accumulatedContent!.push(reasoningData.text);
+
       this.dispatchEvent({
-        type: EventType.THINKING_TEXT_MESSAGE_CONTENT,
+        type: EventType.REASONING_MESSAGE_CONTENT,
+        messageId: this.reasoningProcess.reasoningId!,
         delta: reasoningData.text,
       });
     }
@@ -71,7 +90,10 @@ class MockLangGraphAgent {
 
   reset() {
     this.dispatchedEvents = [];
-    this.thinkingProcess = null;
+    this.reasoningProcess = null;
+    if (this.activeRun) {
+      this.activeRun.reasoningMessages = [];
+    }
   }
 }
 
@@ -82,18 +104,18 @@ describe("Reasoning Integration", () => {
     agent = new MockLangGraphAgent();
   });
 
-  describe("handleThinkingEvent dispatches events correctly", () => {
-    it("should dispatch THINKING_START for first reasoning chunk", () => {
+  describe("handleReasoningEvent dispatches events correctly", () => {
+    it("should dispatch REASONING_START for first reasoning chunk", () => {
       const reasoningData: LangGraphReasoning = {
         type: "text",
         text: "Let me think...",
         index: 0,
       };
 
-      agent.handleThinkingEvent(reasoningData);
+      agent.handleReasoningEvent(reasoningData);
 
       const eventTypes = agent.dispatchedEvents.map((e) => e.type);
-      expect(eventTypes).toContain(EventType.THINKING_START);
+      expect(eventTypes).toContain(EventType.REASONING_START);
     });
 
     it("should dispatch full event sequence for reasoning content", () => {
@@ -103,13 +125,13 @@ describe("Reasoning Integration", () => {
         index: 0,
       };
 
-      agent.handleThinkingEvent(reasoningData);
+      agent.handleReasoningEvent(reasoningData);
 
       const eventTypes = agent.dispatchedEvents.map((e) => e.type);
       expect(eventTypes).toEqual([
-        EventType.THINKING_START,
-        EventType.THINKING_TEXT_MESSAGE_START,
-        EventType.THINKING_TEXT_MESSAGE_CONTENT,
+        EventType.REASONING_START,
+        EventType.REASONING_MESSAGE_START,
+        EventType.REASONING_MESSAGE_CONTENT,
       ]);
     });
 
@@ -120,7 +142,7 @@ describe("Reasoning Integration", () => {
         index: 0,
       };
 
-      agent.handleThinkingEvent(reasoningData);
+      agent.handleReasoningEvent(reasoningData);
 
       // Find content event by checking for delta property
       const contentEvents = agent.dispatchedEvents.filter((e) => "delta" in e);
@@ -140,8 +162,8 @@ describe("Reasoning Integration", () => {
         index: 0,
       };
 
-      agent.handleThinkingEvent(chunk1);
-      agent.handleThinkingEvent(chunk2);
+      agent.handleReasoningEvent(chunk1);
+      agent.handleReasoningEvent(chunk2);
 
       // Find content events by checking for delta property
       const contentEvents = agent.dispatchedEvents.filter((e) => "delta" in e);
@@ -163,45 +185,45 @@ describe("Reasoning Integration", () => {
         index: 2,
       };
 
-      agent.handleThinkingEvent(chunk1);
+      agent.handleReasoningEvent(chunk1);
       const eventsAfterFirst = agent.dispatchedEvents.length;
 
-      agent.handleThinkingEvent(chunk2);
+      agent.handleReasoningEvent(chunk2);
       const eventsAfterSecond = agent.dispatchedEvents.length;
 
       // Second block should emit more events than just content
       // (it should close first block + start new block)
       expect(eventsAfterSecond).toBeGreaterThan(eventsAfterFirst + 1);
 
-      // Thinking process should now have index 2
-      expect(agent.thinkingProcess?.index).toBe(2);
+      // Reasoning process should now have index 2
+      expect(agent.reasoningProcess?.index).toBe(2);
     });
 
     it("should not dispatch events for invalid reasoning data", () => {
-      agent.handleThinkingEvent(null as any);
+      agent.handleReasoningEvent(null as any);
       expect(agent.dispatchedEvents).toHaveLength(0);
 
-      agent.handleThinkingEvent({ type: "text" } as any);
+      agent.handleReasoningEvent({ type: "text" } as any);
       expect(agent.dispatchedEvents).toHaveLength(0);
 
-      agent.handleThinkingEvent({ text: "no type" } as any);
+      agent.handleReasoningEvent({ text: "no type" } as any);
       expect(agent.dispatchedEvents).toHaveLength(0);
     });
 
-    it("should track thinking process state correctly", () => {
+    it("should track reasoning process state correctly", () => {
       const reasoningData: LangGraphReasoning = {
         type: "text",
         text: "Thinking...",
         index: 0,
       };
 
-      expect(agent.thinkingProcess).toBeNull();
+      expect(agent.reasoningProcess).toBeNull();
 
-      agent.handleThinkingEvent(reasoningData);
+      agent.handleReasoningEvent(reasoningData);
 
-      expect(agent.thinkingProcess).not.toBeNull();
-      expect(agent.thinkingProcess?.index).toBe(0);
-      expect(agent.thinkingProcess?.type).toBe("text");
+      expect(agent.reasoningProcess).not.toBeNull();
+      expect(agent.reasoningProcess?.index).toBe(0);
+      expect(agent.reasoningProcess?.type).toBe("text");
     });
   });
 });

@@ -110,7 +110,7 @@ class TestReasoningIntegration(unittest.IsolatedAsyncioTestCase):
         self.agent.active_run = {
             "id": "run-123",
             "run_id": "run-123",
-            "thinking_process": None,
+            "reasoning_process": None,
             "has_function_streaming": False,
         }
         self.agent.messages_in_process = {}
@@ -213,8 +213,8 @@ class TestReasoningIntegration(unittest.IsolatedAsyncioTestCase):
         thinking_event = create_langgraph_event("on_chat_model_stream", thinking_chunk)
         await self._collect_events(thinking_event)
 
-        # Verify thinking_process is set
-        self.assertIsNotNone(self.agent.active_run.get("thinking_process"))
+        # Verify reasoning_process is set
+        self.assertIsNotNone(self.agent.active_run.get("reasoning_process"))
 
         # Second: text content (no thinking)
         text_chunk = MockChunk(
@@ -276,7 +276,7 @@ class TestToolCallIntegration(unittest.IsolatedAsyncioTestCase):
         self.agent.active_run = {
             "id": "run-123",
             "run_id": "run-123",
-            "thinking_process": None,
+            "reasoning_process": None,
             "has_function_streaming": False,
         }
         self.agent.messages_in_process = {}
@@ -403,7 +403,7 @@ class TestTextMessageIntegration(unittest.IsolatedAsyncioTestCase):
         self.agent.active_run = {
             "id": "run-123",
             "run_id": "run-123",
-            "thinking_process": None,
+            "reasoning_process": None,
             "has_function_streaming": False,
         }
         self.agent.messages_in_process = {}
@@ -494,7 +494,7 @@ class TestInterruptIntegration(unittest.IsolatedAsyncioTestCase):
         self.agent.active_run = {
             "id": "run-123",
             "run_id": "run-123",
-            "thinking_process": None,
+            "reasoning_process": None,
             "has_function_streaming": False,
             "mode": "start",
             "schema_keys": {"input": [], "output": [], "config": [], "context": []},
@@ -632,7 +632,7 @@ class TestResumeIntegration(unittest.IsolatedAsyncioTestCase):
         self.agent.active_run = {
             "id": "run-123",
             "run_id": "run-123",
-            "thinking_process": None,
+            "reasoning_process": None,
             "has_function_streaming": False,
             "mode": "start",
             "schema_keys": {"input": [], "output": [], "config": [], "context": []},

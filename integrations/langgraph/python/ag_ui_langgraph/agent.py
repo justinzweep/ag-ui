@@ -17,6 +17,7 @@ from ag_ui.core import (
     Interrupt,
     MessagesSnapshotEvent,
     RawEvent,
+    ReasoningMessage,
     RunAgentInput,
     RunErrorEvent,
     RunFinishedEvent,
@@ -59,6 +60,7 @@ from .utils import (
     camel_to_snake,
     filter_object_by_schema_keys,
     get_stream_payload_input,
+    interleave_reasoning_messages,
     json_safe_stringify,
     langchain_messages_to_agui,
     make_json_safe,
@@ -139,9 +141,10 @@ class LangGraphAgent:
         INITIAL_ACTIVE_RUN = {
             "id": input.run_id,
             "thread_id": thread_id,
-            "thinking_process": None,
+            "reasoning_process": None,
             "node_name": None,
             "has_function_streaming": False,
+            "reasoning_messages": [],
         }
         self.active_run = INITIAL_ACTIVE_RUN
 
@@ -311,10 +314,19 @@ class LangGraphAgent:
             )
         )
 
+        # Finalize any pending reasoning before creating the messages snapshot
+        for ev in self.finalize_pending_reasoning():
+            yield ev
+
+        # Build messages snapshot with reasoning interleaved
+        agui_messages = langchain_messages_to_agui(state_values.get("messages", []))
+        reasoning_messages = self.active_run.get("reasoning_messages", [])
+        all_messages = interleave_reasoning_messages(agui_messages, reasoning_messages)
+
         yield self._dispatch_event(
             MessagesSnapshotEvent(
                 type=EventType.MESSAGES_SNAPSHOT,
-                messages=langchain_messages_to_agui(state_values.get("messages", [])),
+                messages=all_messages,
             )
         )
 
@@ -705,19 +717,19 @@ class LangGraphAgent:
             )
 
             if reasoning_data:
-                for event in self.handle_thinking_event(reasoning_data):
+                for event in self.handle_reasoning_event(reasoning_data):
                     yield event
                 return
 
             if (
                 reasoning_data is None
-                and self.active_run.get("thinking_process", None) is not None
+                and self.active_run.get("reasoning_process", None) is not None
             ):
-                thinking_process = self.active_run["thinking_process"]
-                reasoning_id = thinking_process.get(
+                reasoning_process = self.active_run["reasoning_process"]
+                reasoning_id = reasoning_process.get(
                     "reasoning_id", self.active_run["id"]
                 )
-                message_id = thinking_process.get("message_id", reasoning_id)
+                message_id = reasoning_process.get("message_id", reasoning_id)
 
                 yield self._dispatch_event(
                     ReasoningMessageEndEvent(
@@ -731,7 +743,7 @@ class LangGraphAgent:
                         message_id=reasoning_id,
                     )
                 )
-                self.active_run["thinking_process"] = None
+                self.active_run["reasoning_process"] = None
 
             if tool_call_used_to_predict_state:
                 yield self._dispatch_event(
@@ -1018,7 +1030,7 @@ class LangGraphAgent:
                 )
             )
 
-    def handle_thinking_event(
+    def handle_reasoning_event(
         self, reasoning_data: LangGraphReasoning
     ) -> Generator[str, Any, str | None]:
         if (
@@ -1028,16 +1040,16 @@ class LangGraphAgent:
         ):
             return ""
 
-        thinking_step_index = reasoning_data.get("index")
+        reasoning_step_index = reasoning_data.get("index")
 
         if (
-            self.active_run.get("thinking_process")
-            and self.active_run["thinking_process"].get("index")
-            and self.active_run["thinking_process"]["index"] != thinking_step_index
+            self.active_run.get("reasoning_process")
+            and self.active_run["reasoning_process"].get("index")
+            and self.active_run["reasoning_process"]["index"] != reasoning_step_index
         ):
-            if self.active_run["thinking_process"].get("type"):
-                thinking_process = self.active_run["thinking_process"]
-                message_id = thinking_process.get(
+            if self.active_run["reasoning_process"].get("type"):
+                reasoning_process = self.active_run["reasoning_process"]
+                message_id = reasoning_process.get(
                     "message_id", self.active_run["id"]
                 )
                 yield self._dispatch_event(
@@ -1046,11 +1058,11 @@ class LangGraphAgent:
                         message_id=message_id,
                     )
                 )
-            thinking_process = self.active_run["thinking_process"]
-            reasoning_id = thinking_process.get(
+            reasoning_process = self.active_run["reasoning_process"]
+            reasoning_id = reasoning_process.get(
                 "reasoning_id", self.active_run["id"]
             )
-            message_id = thinking_process.get("message_id", reasoning_id)
+            message_id = reasoning_process.get("message_id", reasoning_id)
 
             yield self._dispatch_event(
                 ReasoningMessageEndEvent(
@@ -1064,10 +1076,20 @@ class LangGraphAgent:
                     message_id=reasoning_id,
                 )
             )
-            self.active_run["thinking_process"] = None
+            # Create ReasoningMessage from accumulated content
+            accumulated = reasoning_process.get("accumulated_content", [])
+            if accumulated:
+                self.active_run["reasoning_messages"].append(
+                    ReasoningMessage(
+                        id=reasoning_id,
+                        role="reasoning",
+                        content=accumulated,
+                    )
+                )
+            self.active_run["reasoning_process"] = None
 
-        if not self.active_run.get("thinking_process"):
-            reasoning_id = f"{self.active_run['id']}-{thinking_step_index}"
+        if not self.active_run.get("reasoning_process"):
+            reasoning_id = f"{self.active_run['id']}-{reasoning_step_index}"
             # Try to extract encrypted content from chunk if available
             encrypted_content = None
             # You can extract encrypted_content from the chunk's additional_kwargs if available
@@ -1080,13 +1102,14 @@ class LangGraphAgent:
                     encrypted_content=encrypted_content,
                 )
             )
-            self.active_run["thinking_process"] = {
-                "index": thinking_step_index,
+            self.active_run["reasoning_process"] = {
+                "index": reasoning_step_index,
                 "reasoning_id": reasoning_id,
+                "accumulated_content": [],
             }
 
-        if self.active_run["thinking_process"].get("type") != reasoning_data["type"]:
-            reasoning_id = self.active_run["thinking_process"]["reasoning_id"]
+        if self.active_run["reasoning_process"].get("type") != reasoning_data["type"]:
+            reasoning_id = self.active_run["reasoning_process"]["reasoning_id"]
             message_id = reasoning_id
 
             yield self._dispatch_event(
@@ -1096,11 +1119,16 @@ class LangGraphAgent:
                     role="assistant",
                 )
             )
-            self.active_run["thinking_process"]["type"] = reasoning_data["type"]
-            self.active_run["thinking_process"]["message_id"] = message_id
+            self.active_run["reasoning_process"]["type"] = reasoning_data["type"]
+            self.active_run["reasoning_process"]["message_id"] = message_id
 
-        if self.active_run["thinking_process"].get("type"):
-            message_id = self.active_run["thinking_process"]["message_id"]
+        if self.active_run["reasoning_process"].get("type"):
+            message_id = self.active_run["reasoning_process"]["message_id"]
+
+            # Accumulate content for ReasoningMessage
+            self.active_run["reasoning_process"]["accumulated_content"].append(
+                reasoning_data["text"]
+            )
 
             yield self._dispatch_event(
                 ReasoningMessageContentEvent(
@@ -1109,6 +1137,42 @@ class LangGraphAgent:
                     delta=reasoning_data["text"],
                 )
             )
+
+    def finalize_pending_reasoning(self) -> Generator[str, Any, None]:
+        """Finalize any pending reasoning block and create a ReasoningMessage."""
+        reasoning_process = self.active_run.get("reasoning_process")
+        if not reasoning_process:
+            return
+
+        # Emit end events for the pending reasoning
+        if reasoning_process.get("type"):
+            message_id = reasoning_process.get("message_id", self.active_run["id"])
+            yield self._dispatch_event(
+                ReasoningMessageEndEvent(
+                    type=EventType.REASONING_MESSAGE_END,
+                    message_id=message_id,
+                )
+            )
+
+        reasoning_id = reasoning_process.get("reasoning_id", self.active_run["id"])
+        yield self._dispatch_event(
+            ReasoningEndEvent(
+                type=EventType.REASONING_END,
+                message_id=reasoning_id,
+            )
+        )
+
+        # Create ReasoningMessage from accumulated content
+        accumulated = reasoning_process.get("accumulated_content", [])
+        if accumulated:
+            self.active_run["reasoning_messages"].append(
+                ReasoningMessage(
+                    id=reasoning_id,
+                    role="reasoning",
+                    content=accumulated,
+                )
+            )
+        self.active_run["reasoning_process"] = None
 
     async def get_checkpoint_before_message(self, message_id: str, thread_id: str):
         if not thread_id:

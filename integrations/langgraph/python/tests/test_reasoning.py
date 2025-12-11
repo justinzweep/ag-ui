@@ -186,8 +186,8 @@ class TestResolveReasoningContent(unittest.TestCase):
         self.assertEqual(result["index"], 0)
 
 
-class TestHandleThinkingEvent(unittest.TestCase):
-    """Tests for handle_thinking_event() method in LangGraphAgent."""
+class TestHandleReasoningEvent(unittest.TestCase):
+    """Tests for handle_reasoning_event() method in LangGraphAgent."""
 
     def setUp(self):
         """Set up test fixtures."""
@@ -209,38 +209,39 @@ class TestHandleThinkingEvent(unittest.TestCase):
         self.agent.active_run = {
             "id": "test-run-123",
             "run_id": "test-run-123",
-            "thinking_process": None,
+            "reasoning_process": None,
+            "reasoning_messages": [],
         }
 
     def test_single_reasoning_block_emits_start_events(self):
         """Should emit REASONING_START and REASONING_MESSAGE_START for new block."""
         reasoning_data: LangGraphReasoning = {"type": "text", "text": "Let me think...", "index": 0}
 
-        events = list(self.agent.handle_thinking_event(reasoning_data))
+        events = list(self.agent.handle_reasoning_event(reasoning_data))
 
         # Should have emitted events (as JSON strings)
         self.assertGreater(len(events), 0)
 
-        # Check that thinking_process is now set
-        self.assertIsNotNone(self.agent.active_run.get("thinking_process"))
-        self.assertEqual(self.agent.active_run["thinking_process"]["index"], 0)
+        # Check that reasoning_process is now set
+        self.assertIsNotNone(self.agent.active_run.get("reasoning_process"))
+        self.assertEqual(self.agent.active_run["reasoning_process"]["index"], 0)
 
     def test_multiple_chunks_same_index_emits_content(self):
         """Should emit content events for multiple chunks with same index."""
         # First chunk - starts the reasoning block
         reasoning_data1: LangGraphReasoning = {"type": "text", "text": "First part...", "index": 0}
-        events1 = list(self.agent.handle_thinking_event(reasoning_data1))
+        events1 = list(self.agent.handle_reasoning_event(reasoning_data1))
 
         # Second chunk - continues the same block
         reasoning_data2: LangGraphReasoning = {"type": "text", "text": "Second part...", "index": 0}
-        events2 = list(self.agent.handle_thinking_event(reasoning_data2))
+        events2 = list(self.agent.handle_reasoning_event(reasoning_data2))
 
         # Both should emit events
         self.assertGreater(len(events1), 0)
         self.assertGreater(len(events2), 0)
 
-        # thinking_process should still have index 0
-        self.assertEqual(self.agent.active_run["thinking_process"]["index"], 0)
+        # reasoning_process should still have index 0
+        self.assertEqual(self.agent.active_run["reasoning_process"]["index"], 0)
 
     def test_index_change_closes_previous_block(self):
         """Should close previous block and start new one when index changes.
@@ -251,31 +252,31 @@ class TestHandleThinkingEvent(unittest.TestCase):
         """
         # First block with index=1 (non-zero to avoid falsy bug)
         reasoning_data1: LangGraphReasoning = {"type": "text", "text": "Block 1", "index": 1}
-        events1 = list(self.agent.handle_thinking_event(reasoning_data1))
+        events1 = list(self.agent.handle_reasoning_event(reasoning_data1))
 
         # Second block with different index
         reasoning_data2: LangGraphReasoning = {"type": "text", "text": "Block 2", "index": 2}
-        events2 = list(self.agent.handle_thinking_event(reasoning_data2))
+        events2 = list(self.agent.handle_reasoning_event(reasoning_data2))
 
         # Should have emitted end events for block 1 and start events for block 2
         self.assertGreater(len(events2), 0)
 
-        # thinking_process should now have index 2
-        self.assertEqual(self.agent.active_run["thinking_process"]["index"], 2)
+        # reasoning_process should now have index 2
+        self.assertEqual(self.agent.active_run["reasoning_process"]["index"], 2)
 
     def test_invalid_reasoning_data_returns_empty(self):
         """Should return early for invalid reasoning data (missing type field)."""
         # Missing required 'type' field
         invalid_data = {"text": "Missing type"}
 
-        result = list(self.agent.handle_thinking_event(invalid_data))
+        result = list(self.agent.handle_reasoning_event(invalid_data))
 
         # Generator returns early without yielding anything
         self.assertEqual(result, [])
 
     def test_empty_reasoning_data_returns_empty(self):
         """Should return early for None reasoning data."""
-        result = list(self.agent.handle_thinking_event(None))
+        result = list(self.agent.handle_reasoning_event(None))
 
         # Generator returns early without yielding anything
         self.assertEqual(result, [])
@@ -283,20 +284,104 @@ class TestHandleThinkingEvent(unittest.TestCase):
     def test_reasoning_id_format(self):
         """Should generate proper reasoning_id format: {run_id}-{index}."""
         reasoning_data: LangGraphReasoning = {"type": "text", "text": "Test", "index": 0}
-        list(self.agent.handle_thinking_event(reasoning_data))
+        list(self.agent.handle_reasoning_event(reasoning_data))
 
-        reasoning_id = self.agent.active_run["thinking_process"]["reasoning_id"]
+        reasoning_id = self.agent.active_run["reasoning_process"]["reasoning_id"]
         # ID format is {run_id}-{index} without any prefix
         self.assertEqual(reasoning_id, "test-run-123-0")
 
     def test_message_id_equals_reasoning_id(self):
         """Should set message_id equal to reasoning_id (no prefix)."""
         reasoning_data: LangGraphReasoning = {"type": "text", "text": "Test", "index": 0}
-        list(self.agent.handle_thinking_event(reasoning_data))
+        list(self.agent.handle_reasoning_event(reasoning_data))
 
-        message_id = self.agent.active_run["thinking_process"]["message_id"]
-        reasoning_id = self.agent.active_run["thinking_process"]["reasoning_id"]
+        message_id = self.agent.active_run["reasoning_process"]["message_id"]
+        reasoning_id = self.agent.active_run["reasoning_process"]["reasoning_id"]
         self.assertEqual(message_id, reasoning_id)
+
+    def test_accumulated_content_stored_in_reasoning_messages(self):
+        """Should accumulate content and store ReasoningMessage when block ends."""
+        # First reasoning block
+        reasoning_data1: LangGraphReasoning = {"type": "text", "text": "Part 1", "index": 1}
+        list(self.agent.handle_reasoning_event(reasoning_data1))
+        reasoning_data2: LangGraphReasoning = {"type": "text", "text": " Part 2", "index": 1}
+        list(self.agent.handle_reasoning_event(reasoning_data2))
+
+        # Trigger index change to close the block
+        reasoning_data3: LangGraphReasoning = {"type": "text", "text": "New block", "index": 2}
+        list(self.agent.handle_reasoning_event(reasoning_data3))
+
+        # Check that ReasoningMessage was created
+        self.assertEqual(len(self.agent.active_run["reasoning_messages"]), 1)
+        msg = self.agent.active_run["reasoning_messages"][0]
+        self.assertEqual(msg.id, "test-run-123-1")
+        self.assertEqual(msg.role, "reasoning")
+        self.assertEqual(msg.content, ["Part 1", " Part 2"])
+
+
+class TestInterleaveReasoningMessages(unittest.TestCase):
+    """Tests for interleave_reasoning_messages helper function."""
+
+    def test_empty_reasoning_returns_original_messages(self):
+        """Should return original messages if no reasoning."""
+        from ag_ui_langgraph.utils import interleave_reasoning_messages
+        from ag_ui.core import UserMessage, AssistantMessage
+
+        messages = [
+            UserMessage(id="1", role="user", content="Hello"),
+            AssistantMessage(id="2", role="assistant", content="Hi"),
+        ]
+        result = interleave_reasoning_messages(messages, [])
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0].id, "1")
+        self.assertEqual(result[1].id, "2")
+
+    def test_reasoning_inserted_before_assistant_message(self):
+        """Should insert reasoning before corresponding assistant message."""
+        from ag_ui_langgraph.utils import interleave_reasoning_messages
+        from ag_ui.core import UserMessage, AssistantMessage, ReasoningMessage
+
+        messages = [
+            UserMessage(id="1", role="user", content="Hello"),
+            AssistantMessage(id="2", role="assistant", content="Hi"),
+        ]
+        reasoning_messages = [
+            ReasoningMessage(id="r1", role="reasoning", content=["thinking..."]),
+        ]
+
+        result = interleave_reasoning_messages(messages, reasoning_messages)
+
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[0].role, "user")
+        self.assertEqual(result[1].role, "reasoning")  # Inserted before assistant
+        self.assertEqual(result[2].role, "assistant")
+
+    def test_multiple_reasoning_blocks(self):
+        """Should handle multiple reasoning blocks for multiple assistant messages."""
+        from ag_ui_langgraph.utils import interleave_reasoning_messages
+        from ag_ui.core import UserMessage, AssistantMessage, ReasoningMessage
+
+        messages = [
+            UserMessage(id="1", role="user", content="Q1"),
+            AssistantMessage(id="2", role="assistant", content="A1"),
+            UserMessage(id="3", role="user", content="Q2"),
+            AssistantMessage(id="4", role="assistant", content="A2"),
+        ]
+        reasoning_messages = [
+            ReasoningMessage(id="r1", role="reasoning", content=["think1"]),
+            ReasoningMessage(id="r2", role="reasoning", content=["think2"]),
+        ]
+
+        result = interleave_reasoning_messages(messages, reasoning_messages)
+
+        self.assertEqual(len(result), 6)
+        self.assertEqual(result[0].role, "user")
+        self.assertEqual(result[1].role, "reasoning")  # r1 before A1
+        self.assertEqual(result[2].role, "assistant")
+        self.assertEqual(result[3].role, "user")
+        self.assertEqual(result[4].role, "reasoning")  # r2 before A2
+        self.assertEqual(result[5].role, "assistant")
 
 
 if __name__ == "__main__":

@@ -50,9 +50,11 @@ export type MessageInProgress = {
   toolCallName?: string | null;
 };
 
-export type ThinkingInProgress = {
+export type ReasoningInProgress = {
   index: number;
   type?: LangGraphReasoning['type'];
+  reasoningId?: string;
+  accumulatedContent?: string[];
 }
 
 export interface RunMetadata {
@@ -67,6 +69,8 @@ export interface RunMetadata {
   hasFunctionStreaming?: boolean;
   // True once the platform-assigned run id is known (set from stream metadata)
   serverRunIdKnown?: boolean;
+  // Accumulated reasoning messages for inclusion in MESSAGES_SNAPSHOT
+  reasoningMessages?: Array<{ id: string; content: string[] }>;
 }
 
 export type MessagesInProgressRecord = Record<string, MessageInProgress | null>;
