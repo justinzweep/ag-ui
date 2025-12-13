@@ -516,15 +516,40 @@ class LangGraphAgent:
                         "interrupts are pending. Client must send resume.interruptId (or resume.interrupt_id)."
                     )
 
-            logger.debug(
-                "prepare_stream resume: interrupt_id=%s interrupts=%s",
-                resume_interrupt_id,
-                len(interrupts) if has_active_interrupts else 0,
-            )
+            # Determine resume form based on interrupt count (per LangGraph docs):
+            # - Single interrupt: ALWAYS use scalar form for robustness
+            # - Multiple interrupts: use mapping form {interrupt_id: payload}
+            num_interrupts = len(interrupts) if has_active_interrupts else 0
 
-            if isinstance(resume_interrupt_id, str) and resume_interrupt_id:
+            if num_interrupts == 1:
+                # Single interrupt: always use scalar form to avoid index-based resume pitfalls
+                logger.debug(
+                    "prepare_stream resume: SCALAR form (single interrupt), "
+                    "client_interrupt_id=%s",
+                    resume_interrupt_id,
+                )
+                stream_input = Command(resume=resume_input)
+            elif (
+                num_interrupts > 1
+                and isinstance(resume_interrupt_id, str)
+                and resume_interrupt_id
+            ):
+                # Multiple interrupts: use mapping form to target specific interrupt
+                logger.debug(
+                    "prepare_stream resume: MAPPING form (multi-interrupt), "
+                    "interrupt_id=%s num_interrupts=%s",
+                    resume_interrupt_id,
+                    num_interrupts,
+                )
                 stream_input = Command(resume={resume_interrupt_id: resume_input})
             else:
+                # No active interrupts or edge case: use scalar form
+                logger.debug(
+                    "prepare_stream resume: SCALAR form (fallback), "
+                    "interrupt_id=%s num_interrupts=%s",
+                    resume_interrupt_id,
+                    num_interrupts,
+                )
                 stream_input = Command(resume=resume_input)
         else:
             payload_input = get_stream_payload_input(
