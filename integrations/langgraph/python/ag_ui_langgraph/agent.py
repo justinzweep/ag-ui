@@ -214,15 +214,6 @@ class LangGraphAgent:
         current_graph_state = state
 
         async for event in stream:
-            subgraphs_stream_enabled = (
-                input.forwarded_props.get("stream_subgraphs")
-                if input.forwarded_props
-                else False
-            )
-            is_subgraph_stream = subgraphs_stream_enabled and (
-                event.get("event", "").startswith("events")
-                or event.get("event", "").startswith("values")
-            )
             if event["event"] == "error":
                 yield self._dispatch_event(
                     RunErrorEvent(
@@ -496,7 +487,6 @@ class LangGraphAgent:
         message_checkpoint: HumanMessage,
         config: RunnableConfig,
     ):
-        tools = input.tools or []
         thread_id = input.thread_id
 
         time_travel_checkpoint = await self.get_checkpoint_before_message(
@@ -540,11 +530,20 @@ class LangGraphAgent:
         return self.messages_in_process.get(run_id)
 
     def set_message_in_progress(self, run_id: str, data: MessageInProgress):
-        current_message_in_progress = self.messages_in_process.get(run_id, {})
+        # Note: We intentionally do NOT store None in messages_in_process.
+        # Older code used `self.messages_in_process[run_id] = None` to clear state.
+        # If that happens (e.g., from older versions or mixed runtime state),
+        # we must treat it as empty dict to avoid:
+        #   TypeError: 'NoneType' object is not a mapping
+        current_message_in_progress = self.messages_in_process.get(run_id) or {}
         self.messages_in_process[run_id] = {
             **current_message_in_progress,
             **data,
         }
+
+    def clear_message_in_progress(self, run_id: str) -> None:
+        """Clear message/tool-call streaming state for a run."""
+        self.messages_in_process.pop(run_id, None)
 
     def get_schema_keys(self, config) -> SchemaKeys:
         try:
@@ -773,7 +772,7 @@ class LangGraphAgent:
                         raw_event=event,
                     )
                 )
-                self.messages_in_process[self.active_run["id"]] = None
+                self.clear_message_in_progress(self.active_run["id"])
                 return
 
             if is_message_end_event:
@@ -784,7 +783,7 @@ class LangGraphAgent:
                         raw_event=event,
                     )
                 )
-                self.messages_in_process[self.active_run["id"]] = None
+                self.clear_message_in_progress(self.active_run["id"])
                 return
 
             if is_tool_call_start_event and should_emit_tool_calls:
@@ -819,7 +818,7 @@ class LangGraphAgent:
                 return
 
             if is_message_content_event and should_emit_messages:
-                if bool(current_stream and current_stream.get("id")) == False:
+                if not (current_stream and current_stream.get("id")):
                     yield self._dispatch_event(
                         TextMessageStartEvent(
                             type=EventType.TEXT_MESSAGE_START,
@@ -864,7 +863,7 @@ class LangGraphAgent:
                     )
                 )
                 if resolved:
-                    self.messages_in_process[self.active_run["id"]] = None
+                    self.clear_message_in_progress(self.active_run["id"])
                 yield resolved
             elif self.get_message_in_progress(
                 self.active_run["id"]
@@ -879,7 +878,7 @@ class LangGraphAgent:
                     )
                 )
                 if resolved:
-                    self.messages_in_process[self.active_run["id"]] = None
+                    self.clear_message_in_progress(self.active_run["id"])
                 yield resolved
 
         elif event_type == LangGraphEventTypes.OnCustomEvent:
