@@ -3,11 +3,11 @@ Tests for interrupt detection and resume handling.
 """
 
 import unittest
-from unittest.mock import MagicMock, AsyncMock, patch
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
+from unittest.mock import AsyncMock, MagicMock
 
-from ag_ui.core import EventType, RunAgentInput, Resume
+from ag_ui.core import EventType, Resume, RunAgentInput
 
 
 @dataclass
@@ -211,7 +211,9 @@ class TestResumeHandling(unittest.TestCase):
         if input_data.resume and input_data.resume.payload is not None:
             resume_input = input_data.resume.payload
         elif input_data.forwarded_props:
-            resume_input = input_data.forwarded_props.get("command", {}).get("resume", None)
+            resume_input = input_data.forwarded_props.get("command", {}).get(
+                "resume", None
+            )
 
         self.assertEqual(resume_input, {"from": "input.resume"})
 
@@ -231,7 +233,9 @@ class TestResumeHandling(unittest.TestCase):
         if input_data.resume and input_data.resume.payload is not None:
             resume_input = input_data.resume.payload
         elif input_data.forwarded_props:
-            resume_input = input_data.forwarded_props.get("command", {}).get("resume", None)
+            resume_input = input_data.forwarded_props.get("command", {}).get(
+                "resume", None
+            )
 
         self.assertIsNone(resume_input)
 
@@ -241,20 +245,66 @@ class TestRunFinishedEventWithInterrupt(unittest.TestCase):
 
     def test_run_finished_interrupt_schema(self):
         """Should create valid RunFinishedEvent with interrupt outcome."""
-        from ag_ui.core import RunFinishedEvent, Interrupt
+        from ag_ui.core import Interrupt, RunFinishedEvent
 
         event = RunFinishedEvent(
             type=EventType.RUN_FINISHED,
             thread_id="thread-1",
             run_id="run-1",
             outcome="interrupt",
-            interrupt=Interrupt(id="int-123", reason="human_approval", payload={"tool": "send_email"}),
+            interrupt=Interrupt(
+                id="int-123", reason="human_approval", payload={"tool": "send_email"}
+            ),
         )
 
         self.assertEqual(event.type, EventType.RUN_FINISHED)
         self.assertEqual(event.outcome, "interrupt")
         self.assertEqual(event.interrupt.id, "int-123")
         self.assertEqual(event.interrupt.reason, "human_approval")
+
+    def test_langgraph_interrupt_id_should_be_forwarded(self):
+        """Integration should forward LangGraph Interrupt.id (stable)."""
+        from ag_ui_langgraph.agent import LangGraphAgent
+
+        @dataclass
+        class LGInterrupt:
+            id: str
+            value: Any = None
+
+        mock_graph = MagicMock()
+        mock_graph.get_input_jsonschema.return_value = {"properties": {}}
+        mock_graph.get_output_jsonschema.return_value = {"properties": {}}
+        mock_config_schema = MagicMock()
+        mock_config_schema.schema.return_value = {"properties": {}}
+        mock_graph.config_schema.return_value = mock_config_schema
+
+        agent = LangGraphAgent(name="test-agent", graph=mock_graph)
+        lg_interrupt = LGInterrupt(id="lg-int-001", value={"reason": "human_approval"})
+
+        self.assertEqual(agent._get_langgraph_interrupt_id(lg_interrupt), "lg-int-001")
+
+    def test_langgraph_legacy_interrupt_id_fallback(self):
+        """Integration should fall back to legacy interrupt_id when id is absent."""
+        from ag_ui_langgraph.agent import LangGraphAgent
+
+        @dataclass
+        class LegacyLGInterrupt:
+            interrupt_id: str
+            value: Any = None
+
+        mock_graph = MagicMock()
+        mock_graph.get_input_jsonschema.return_value = {"properties": {}}
+        mock_graph.get_output_jsonschema.return_value = {"properties": {}}
+        mock_config_schema = MagicMock()
+        mock_config_schema.schema.return_value = {"properties": {}}
+        mock_graph.config_schema.return_value = mock_config_schema
+
+        agent = LangGraphAgent(name="test-agent", graph=mock_graph)
+        legacy = LegacyLGInterrupt(
+            interrupt_id="lg-int-legacy", value={"reason": "human_approval"}
+        )
+
+        self.assertEqual(agent._get_langgraph_interrupt_id(legacy), "lg-int-legacy")
 
     def test_run_finished_success_schema(self):
         """Should create valid RunFinishedEvent with success outcome."""
@@ -348,8 +398,65 @@ class TestPrepareStreamResumeHandling(unittest.TestCase):
 
             # If events_to_dispatch is set, it means prepare_stream didn't recognize the resume
             # which is the bug we're fixing
-            self.assertIsNone(events_to_dispatch,
-                "prepare_stream should recognize input.resume and not return events_to_dispatch")
+            self.assertIsNone(
+                events_to_dispatch,
+                "prepare_stream should recognize input.resume and not return events_to_dispatch",
+            )
+
+        asyncio.run(run_test())
+
+    def test_prepare_stream_uses_interrupt_id_resume_mapping(self):
+        """When Resume.interrupt_id is provided, integration should build Command(resume={id: payload})."""
+        import asyncio
+
+        async def run_test():
+            # Make agent instance with mocked graph, similar to setUp()
+            from ag_ui_langgraph.agent import LangGraphAgent
+
+            mock_graph = MagicMock()
+            mock_graph.get_input_jsonschema.return_value = {"properties": {}}
+            mock_graph.get_output_jsonschema.return_value = {"properties": {}}
+            mock_config_schema = MagicMock()
+            mock_config_schema.schema.return_value = {"properties": {}}
+            mock_graph.config_schema.return_value = mock_config_schema
+            mock_graph.aget_state = AsyncMock()
+
+            agent = LangGraphAgent(name="test-agent", graph=mock_graph)
+            # Ensure active_run exists as prepare_stream expects
+            agent.active_run = {
+                "id": "run-1",
+                "thread_id": "thread-1",
+                "reasoning_process": None,
+                "node_name": None,
+                "has_function_streaming": False,
+                "mode": "start",
+            }
+
+            # Prevent actual streaming setup
+            agent.graph.astream_events = MagicMock()
+            agent.get_stream_kwargs = MagicMock(return_value={})
+
+            agent_state = MockAgentState(tasks=[], values={"messages": []})
+            resume = Resume(interrupt_id="lg-int-001", payload={"approved": True})
+            input_data = RunAgentInput(
+                thread_id="thread-1",
+                run_id="run-1",
+                state={},
+                messages=[],
+                tools=[],
+                context=[],
+                forwarded_props={},
+                resume=resume,
+            )
+
+            await agent.prepare_stream(
+                input_data, agent_state, {"configurable": {"thread_id": "thread-1"}}
+            )
+
+            called_kwargs = agent.get_stream_kwargs.call_args.kwargs
+            stream_input = called_kwargs.get("input")
+            self.assertTrue(hasattr(stream_input, "resume"))
+            self.assertEqual(stream_input.resume, {"lg-int-001": {"approved": True}})
 
         asyncio.run(run_test())
 
@@ -359,7 +466,7 @@ class TestCompleteInterruptResumeFlow(unittest.TestCase):
 
     def test_interrupt_to_resume_flow(self):
         """Should validate complete interrupt to resume flow."""
-        from ag_ui.core import RunFinishedEvent, Interrupt, RunAgentInput, Resume
+        from ag_ui.core import Interrupt, Resume, RunAgentInput, RunFinishedEvent
 
         # Step 1: Agent sends interrupt
         interrupt_event = RunFinishedEvent(

@@ -1,3 +1,4 @@
+import hashlib
 import inspect
 import json
 import uuid
@@ -122,6 +123,36 @@ class LangGraphAgent:
         if hasattr(interrupt, "value") and isinstance(interrupt.value, dict):
             return interrupt.value.get("reason", "human_approval")
         return "human_approval"
+
+    def _get_langgraph_interrupt_id(self, interrupt_obj: Any) -> str:
+        """Return a stable LangGraph interrupt identifier.
+
+        LangGraph Interrupt objects expose `id` (current) and historically `interrupt_id`.
+        We must forward that stable identifier to clients so resume/dedupe works.
+        """
+        if interrupt_obj is None:
+            return ""
+
+        # LangGraph >= v0.6.0: `id`
+        interrupt_id = getattr(interrupt_obj, "id", None)
+        if isinstance(interrupt_id, str) and interrupt_id:
+            return interrupt_id
+
+        # LangGraph <= v0.4.x (deprecated): `interrupt_id`
+        legacy_id = getattr(interrupt_obj, "interrupt_id", None)
+        if isinstance(legacy_id, str) and legacy_id:
+            return legacy_id
+
+        # Last resort: deterministic hash of the interrupt value.
+        try:
+            raw_value = getattr(interrupt_obj, "value", None)
+            dumped = dump_json_safe(raw_value)
+            if not isinstance(dumped, str):
+                dumped = json.dumps(dumped, sort_keys=True, default=json_safe_stringify)
+            return hashlib.sha256(dumped.encode("utf-8")).hexdigest()
+        except Exception:
+            # Never use uuid4 here; stability matters.
+            return "unknown_interrupt"
 
     async def run(self, input: RunAgentInput) -> AsyncGenerator[str, None]:
         forwarded_props = {}
@@ -333,7 +364,7 @@ class LangGraphAgent:
                     run_id=self.active_run["id"],
                     outcome="interrupt",
                     interrupt=Interrupt(
-                        id=str(uuid.uuid4()),
+                        id=self._get_langgraph_interrupt_id(interrupt_data),
                         reason=self._get_interrupt_reason(interrupts),
                         payload=dump_json_safe(interrupt_data.value)
                         if hasattr(interrupt_data, "value")
@@ -432,7 +463,7 @@ class LangGraphAgent:
                     run_id=self.active_run["id"],
                     outcome="interrupt",
                     interrupt=Interrupt(
-                        id=str(uuid.uuid4()),
+                        id=self._get_langgraph_interrupt_id(interrupt_data),
                         reason=self._get_interrupt_reason(interrupts),
                         payload=dump_json_safe(interrupt_data.value)
                         if interrupt_data and hasattr(interrupt_data, "value")
@@ -453,7 +484,15 @@ class LangGraphAgent:
             )
 
         if resume_input:
-            stream_input = Command(resume=resume_input)
+            # If the client provided an interrupt_id, resume that specific interrupt.
+            # This matches LangGraph's documented multi-interrupt resume mapping.
+            resume_interrupt_id = (
+                getattr(input.resume, "interrupt_id", None) if input.resume else None
+            )
+            if isinstance(resume_interrupt_id, str) and resume_interrupt_id:
+                stream_input = Command(resume={resume_interrupt_id: resume_input})
+            else:
+                stream_input = Command(resume=resume_input)
         else:
             payload_input = get_stream_payload_input(
                 mode=self.active_run["mode"],
