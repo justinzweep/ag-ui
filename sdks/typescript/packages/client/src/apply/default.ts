@@ -196,15 +196,17 @@ export const defaultApplyEvents = (
           applyMutation(mutation);
 
           await Promise.all(
-            subscribers.map((subscriber) => {
-              subscriber.onNewMessage?.({
-                message: targetMessage,
-                messages,
-                state,
-                agent,
-                input,
-              });
-            }),
+            subscribers.map((subscriber) =>
+              Promise.resolve(
+                subscriber.onNewMessage?.({
+                  message: targetMessage,
+                  messages,
+                  state,
+                  agent,
+                  input,
+                }),
+              ),
+            ),
           );
 
           return emitUpdates();
@@ -228,6 +230,16 @@ export const defaultApplyEvents = (
 
           if (mutation.stopPropagation !== true) {
             const { toolCallId, toolCallName, parentMessageId } = event as ToolCallStartEvent;
+
+            // Idempotency: if this toolCallId already exists anywhere, do not create
+            // a new assistant message or duplicate the tool call.
+            const alreadyExists = messages.some(
+              (m) =>
+                (m as AssistantMessage).toolCalls?.some((tc) => tc.id === toolCallId) ?? false,
+            );
+            if (alreadyExists) {
+              return emitUpdates();
+            }
 
             let targetMessage: AssistantMessage;
 
@@ -316,8 +328,29 @@ export const defaultApplyEvents = (
           applyMutation(mutation);
 
           if (mutation.stopPropagation !== true) {
-            // Append the arguments to the correct tool call by ID
-            targetToolCall.function.arguments += delta;
+            // Append the arguments to the correct tool call by ID.
+            //
+            // On resume flows, some servers re-emit TOOL_CALL_ARGS as a full JSON blob.
+            // To keep args idempotent, prefer replacement when we detect a full snapshot.
+            const existingArgs = targetToolCall.function.arguments ?? "";
+            const trimmedDelta = delta.trim();
+            const trimmedExisting = existingArgs.trim();
+
+            const deltaLooksLikeFullJson =
+              trimmedDelta.startsWith("{") && trimmedDelta.endsWith("}");
+            const existingLooksLikeJson = trimmedExisting.startsWith("{");
+
+            if (existingArgs.length > 0 && deltaLooksLikeFullJson && existingLooksLikeJson) {
+              // Prefer the longer of the two when one contains the other, otherwise prefer latest snapshot.
+              if (existingArgs.includes(delta) || delta.includes(existingArgs)) {
+                targetToolCall.function.arguments =
+                  existingArgs.length >= delta.length ? existingArgs : delta;
+              } else {
+                targetToolCall.function.arguments = delta;
+              }
+            } else {
+              targetToolCall.function.arguments += delta;
+            }
             applyMutation({ messages });
           }
 
@@ -371,15 +404,17 @@ export const defaultApplyEvents = (
           applyMutation(mutation);
 
           await Promise.all(
-            subscribers.map((subscriber) => {
-              subscriber.onNewToolCall?.({
-                toolCall: targetToolCall,
-                messages,
-                state,
-                agent,
-                input,
-              });
-            }),
+            subscribers.map((subscriber) =>
+              Promise.resolve(
+                subscriber.onNewToolCall?.({
+                  toolCall: targetToolCall,
+                  messages,
+                  state,
+                  agent,
+                  input,
+                }),
+              ),
+            ),
           );
 
           return emitUpdates();
@@ -405,6 +440,15 @@ export const defaultApplyEvents = (
           if (mutation.stopPropagation !== true) {
             const { messageId, toolCallId, content, role } = event as ToolCallResultEvent;
 
+            // Idempotency: if a tool message for this toolCallId already exists, do not add another.
+            // This prevents duplicate tool-result messages on resume flows.
+            const alreadyHasToolMessage = messages.some(
+              (m) => m.role === "tool" && (m as ToolMessage).toolCallId === toolCallId,
+            );
+            if (alreadyHasToolMessage) {
+              return emitUpdates();
+            }
+
             const toolMessage: ToolMessage = {
               id: messageId,
               toolCallId,
@@ -415,15 +459,17 @@ export const defaultApplyEvents = (
             messages.push(toolMessage);
 
             await Promise.all(
-              subscribers.map((subscriber) => {
-                subscriber.onNewMessage?.({
-                  message: toolMessage,
-                  messages,
-                  state,
-                  agent,
-                  input,
-                });
-              }),
+              subscribers.map((subscriber) =>
+                Promise.resolve(
+                  subscriber.onNewMessage?.({
+                    message: toolMessage,
+                    messages,
+                    state,
+                    agent,
+                    input,
+                  }),
+                ),
+              ),
             );
 
             applyMutation({ messages });

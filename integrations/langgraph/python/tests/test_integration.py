@@ -5,12 +5,14 @@ These tests verify the full event flow from LangGraph events through to AG-UI ev
 catching integration bugs like missing yield statements or incorrect event dispatching.
 """
 
+import json
 import unittest
-from unittest.mock import MagicMock, AsyncMock
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+from unittest.mock import AsyncMock, MagicMock
 
 from ag_ui.core import EventType
+from langchain_core.messages import ToolMessage
 
 
 @dataclass
@@ -38,7 +40,9 @@ class MockChunk:
 
     id: str = "chunk-123"
     content: Any = None
-    response_metadata: MockResponseMetadata = field(default_factory=MockResponseMetadata)
+    response_metadata: MockResponseMetadata = field(
+        default_factory=MockResponseMetadata
+    )
     tool_call_chunks: List[Dict[str, Any]] = field(default_factory=list)
     additional_kwargs: Dict[str, Any] = field(default_factory=dict)
 
@@ -116,7 +120,9 @@ class TestReasoningIntegration(unittest.IsolatedAsyncioTestCase):
         }
         self.agent.messages_in_process = {}
 
-    async def _collect_events(self, event: Dict[str, Any], state: Any = None) -> List[Any]:
+    async def _collect_events(
+        self, event: Dict[str, Any], state: Any = None
+    ) -> List[Any]:
         """Collect all events yielded by _handle_single_event."""
         events = []
         async for e in self.agent._handle_single_event(event, state or {}):
@@ -128,7 +134,13 @@ class TestReasoningIntegration(unittest.IsolatedAsyncioTestCase):
         # Create a LangGraph event with Anthropic thinking content
         chunk = MockChunk(
             id="msg-123",
-            content=[{"thinking": "Let me analyze this step by step...", "type": "thinking", "index": 0}],
+            content=[
+                {
+                    "thinking": "Let me analyze this step by step...",
+                    "type": "thinking",
+                    "index": 0,
+                }
+            ],
         )
         event = create_langgraph_event("on_chat_model_stream", chunk)
 
@@ -136,7 +148,9 @@ class TestReasoningIntegration(unittest.IsolatedAsyncioTestCase):
         events = await self._collect_events(event)
 
         # Should have emitted reasoning events
-        self.assertGreater(len(events), 0, "No events were emitted for thinking content")
+        self.assertGreater(
+            len(events), 0, "No events were emitted for thinking content"
+        )
 
         # Verify event types
         event_types = get_event_types(events)
@@ -282,7 +296,9 @@ class TestToolCallIntegration(unittest.IsolatedAsyncioTestCase):
         }
         self.agent.messages_in_process = {}
 
-    async def _collect_events(self, event: Dict[str, Any], state: Any = None) -> List[Any]:
+    async def _collect_events(
+        self, event: Dict[str, Any], state: Any = None
+    ) -> List[Any]:
         """Collect all events yielded by _handle_single_event."""
         events = []
         async for e in self.agent._handle_single_event(event, state or {}):
@@ -291,7 +307,9 @@ class TestToolCallIntegration(unittest.IsolatedAsyncioTestCase):
 
     async def test_tool_call_start_event(self):
         """Tool call start should emit TOOL_CALL_START event."""
-        tool_chunk = create_tool_call_chunk(id="call-123", name="get_weather", args=None)
+        tool_chunk = create_tool_call_chunk(
+            id="call-123", name="get_weather", args=None
+        )
         chunk = MockChunk(
             id="msg-123",
             content="",
@@ -314,13 +332,17 @@ class TestToolCallIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_tool_call_args_event(self):
         """Tool call args should emit TOOL_CALL_ARGS event."""
         # First: start the tool call
-        start_chunk = create_tool_call_chunk(id="call-123", name="get_weather", args=None)
+        start_chunk = create_tool_call_chunk(
+            id="call-123", name="get_weather", args=None
+        )
         chunk1 = MockChunk(id="msg-123", content="", tool_call_chunks=[start_chunk])
         event1 = create_langgraph_event("on_chat_model_stream", chunk1)
         await self._collect_events(event1)
 
         # Second: send args
-        args_chunk = create_tool_call_chunk(id="call-123", name=None, args='{"city": "NYC"}')
+        args_chunk = create_tool_call_chunk(
+            id="call-123", name=None, args='{"city": "NYC"}'
+        )
         chunk2 = MockChunk(id="msg-123", content="", tool_call_chunks=[args_chunk])
         event2 = create_langgraph_event("on_chat_model_stream", chunk2)
 
@@ -337,7 +359,9 @@ class TestToolCallIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_tool_call_end_event(self):
         """Tool call end should emit TOOL_CALL_END event."""
         # Start the tool call
-        start_chunk = create_tool_call_chunk(id="call-123", name="get_weather", args=None)
+        start_chunk = create_tool_call_chunk(
+            id="call-123", name="get_weather", args=None
+        )
         chunk1 = MockChunk(id="msg-123", content="", tool_call_chunks=[start_chunk])
         event1 = create_langgraph_event("on_chat_model_stream", chunk1)
         await self._collect_events(event1)
@@ -368,7 +392,9 @@ class TestToolCallIntegration(unittest.IsolatedAsyncioTestCase):
         collected_types.extend(get_event_types(events1))
 
         # Args
-        args_chunk = create_tool_call_chunk(id="call-123", name=None, args='{"q": "test"}')
+        args_chunk = create_tool_call_chunk(
+            id="call-123", name=None, args='{"q": "test"}'
+        )
         chunk2 = MockChunk(id="msg-123", content="", tool_call_chunks=[args_chunk])
         event2 = create_langgraph_event("on_chat_model_stream", chunk2)
         events2 = await self._collect_events(event2)
@@ -384,6 +410,56 @@ class TestToolCallIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertIn(EventType.TOOL_CALL_START.value, collected_types)
         self.assertIn(EventType.TOOL_CALL_ARGS.value, collected_types)
         self.assertIn(EventType.TOOL_CALL_END.value, collected_types)
+
+    async def test_tool_call_result_is_json_enveloped(self):
+        """Tool call results should be emitted as JSON envelope content."""
+        # Arrange: a tool end event with a ToolMessage output
+        tool_msg = ToolMessage(
+            id="tool-msg-1",
+            tool_call_id="call-123",
+            name="vector_search",
+            content="Found 9 results",
+        )
+        event = {
+            "event": "on_tool_end",
+            "data": {"output": tool_msg, "input": {"q": "test"}},
+            "metadata": {"emit-messages": True, "emit-tool-calls": True},
+        }
+
+        events = await self._collect_events(event)
+        # Find TOOL_CALL_RESULT
+        result_events = [
+            e for e in events if getattr(e, "type", None) == EventType.TOOL_CALL_RESULT
+        ]
+        self.assertEqual(len(result_events), 1, "Expected exactly one TOOL_CALL_RESULT")
+
+        payload = json.loads(result_events[0].content)
+        self.assertIn("data", payload)
+        self.assertIn("toolCallId", payload)
+        self.assertEqual(payload["toolCallId"], "call-123")
+        self.assertEqual(payload.get("tool"), "vector_search")
+        self.assertEqual(payload["data"], "Found 9 results")
+
+    async def test_langchain_tool_message_snapshot_is_enveloped(self):
+        """langchain_messages_to_agui should wrap ToolMessage content in an envelope."""
+        from ag_ui_langgraph.utils import langchain_messages_to_agui
+
+        tool_msg = ToolMessage(
+            id="tool-msg-2",
+            tool_call_id="call-456",
+            name="writer.edit_section",
+            content={"ok": True, "updated": 1},
+        )
+
+        agui_messages = langchain_messages_to_agui([tool_msg])
+        self.assertEqual(len(agui_messages), 1)
+        self.assertEqual(agui_messages[0].role, "tool")
+        self.assertEqual(agui_messages[0].tool_call_id, "call-456")
+
+        payload = json.loads(agui_messages[0].content)
+        self.assertEqual(payload["toolCallId"], "call-456")
+        self.assertEqual(payload["tool"], "writer.edit_section")
+        self.assertEqual(payload["data"], {"ok": True, "updated": 1})
 
 
 class TestTextMessageIntegration(unittest.IsolatedAsyncioTestCase):
@@ -409,7 +485,9 @@ class TestTextMessageIntegration(unittest.IsolatedAsyncioTestCase):
         }
         self.agent.messages_in_process = {}
 
-    async def _collect_events(self, event: Dict[str, Any], state: Any = None) -> List[Any]:
+    async def _collect_events(
+        self, event: Dict[str, Any], state: Any = None
+    ) -> List[Any]:
         """Collect all events yielded by _handle_single_event."""
         events = []
         async for e in self.agent._handle_single_event(event, state or {}):
@@ -504,7 +582,9 @@ class TestInterruptIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_interrupt_detection_emits_run_finished_with_interrupt(self):
         """When interrupts are detected, should emit RunFinished with outcome='interrupt'."""
         # Mock agent state with interrupts
-        interrupt = MockInterrupt(value={"reason": "human_approval", "tool": "send_email"})
+        interrupt = MockInterrupt(
+            value={"reason": "human_approval", "tool": "send_email"}
+        )
         task = MockTask(interrupts=[interrupt])
         mock_state = MockAgentState(
             values={"messages": []},
@@ -649,7 +729,7 @@ class TestResumeIntegration(unittest.IsolatedAsyncioTestCase):
             tasks=[task],
         )
 
-        from ag_ui.core import RunAgentInput, Resume
+        from ag_ui.core import Resume, RunAgentInput
 
         input_data = RunAgentInput(
             thread_id="thread-123",

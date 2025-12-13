@@ -75,23 +75,22 @@ class TestBaseTypes(unittest.TestCase):
         """Test creating and serializing a reasoning message"""
         msg = ReasoningMessage(
             id="reasoning_123",
-            content=["First thought", "Second thought", "Conclusion"],
+            content="First thought. Second thought. Conclusion.",
         )
 
         self.assertEqual(msg.role, "reasoning")
-        self.assertEqual(msg.content, ["First thought", "Second thought", "Conclusion"])
+        self.assertEqual(msg.content, "First thought. Second thought. Conclusion.")
         self.assertIsNone(msg.encrypted_content)
 
         serialized = msg.model_dump(by_alias=True)
         self.assertEqual(serialized["role"], "reasoning")
-        self.assertEqual(len(serialized["content"]), 3)
-        self.assertEqual(serialized["content"][0], "First thought")
+        self.assertEqual(serialized["content"], "First thought. Second thought. Conclusion.")
 
     def test_reasoning_message_with_encrypted_content(self):
         """Test creating and serializing a reasoning message with encrypted content"""
         msg = ReasoningMessage(
             id="reasoning_456",
-            content=["Thinking..."],
+            content="Thinking...",
             encrypted_content="encrypted_blob_xyz",
         )
 
@@ -229,7 +228,7 @@ class TestBaseTypes(unittest.TestCase):
             {
                 "id": "reasoning_505",
                 "role": "reasoning",
-                "content": ["Thought 1", "Thought 2"],
+                "content": "Thought 1. Thought 2.",
             },
         ]
 
@@ -307,10 +306,7 @@ class TestBaseTypes(unittest.TestCase):
                 {
                     "id": "reasoning_001",
                     "role": "reasoning",
-                    "content": [
-                        "I need to analyze the sales data",
-                        "I should use the analyze_data tool",
-                    ],
+                    "content": "I need to analyze the sales data. I should use the analyze_data tool.",
                     "encryptedContent": "encrypted_reasoning_xyz",
                 },
                 # Assistant message with tool calls
@@ -418,8 +414,10 @@ class TestBaseTypes(unittest.TestCase):
 
         # Verify reasoning message
         reasoning_msg = run_agent_input.messages[3]
-        self.assertEqual(len(reasoning_msg.content), 2)
-        self.assertEqual(reasoning_msg.content[0], "I need to analyze the sales data")
+        self.assertEqual(
+            reasoning_msg.content,
+            "I need to analyze the sales data. I should use the analyze_data tool.",
+        )
         self.assertEqual(reasoning_msg.encrypted_content, "encrypted_reasoning_xyz")
 
         multimodal_content = run_agent_input.messages[6].content

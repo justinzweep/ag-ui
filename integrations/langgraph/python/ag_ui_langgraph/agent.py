@@ -17,7 +17,12 @@ from ag_ui.core import (
     Interrupt,
     MessagesSnapshotEvent,
     RawEvent,
+    ReasoningEndEvent,
     ReasoningMessage,
+    ReasoningMessageContentEvent,
+    ReasoningMessageEndEvent,
+    ReasoningMessageStartEvent,
+    ReasoningStartEvent,
     RunAgentInput,
     RunErrorEvent,
     RunFinishedEvent,
@@ -29,11 +34,6 @@ from ag_ui.core import (
     TextMessageContentEvent,
     TextMessageEndEvent,
     TextMessageStartEvent,
-    ReasoningStartEvent,
-    ReasoningMessageStartEvent,
-    ReasoningMessageContentEvent,
-    ReasoningMessageEndEvent,
-    ReasoningEndEvent,
     ToolCallArgsEvent,
     ToolCallEndEvent,
     ToolCallResultEvent,
@@ -65,6 +65,7 @@ from .utils import (
     make_json_safe,
     resolve_message_content,
     resolve_reasoning_content,
+    wrap_tool_result_content,
 )
 
 ProcessedEvents = Union[
@@ -747,7 +748,9 @@ class LangGraphAgent:
                         ReasoningMessage(
                             id=reasoning_id,
                             role="reasoning",
-                            content="".join(accumulated),  # Join list into single string
+                            content="".join(
+                                accumulated
+                            ),  # Join list into single string
                         )
                     )
                 self.active_run["reasoning_process"] = None
@@ -995,7 +998,11 @@ class LangGraphAgent:
                             type=EventType.TOOL_CALL_RESULT,
                             tool_call_id=tool_msg.tool_call_id,
                             message_id=str(uuid.uuid4()),
-                            content=tool_msg.content,
+                            content=wrap_tool_result_content(
+                                tool_call_id=tool_msg.tool_call_id,
+                                tool_name=getattr(tool_msg, "name", None),
+                                raw_content=tool_msg.content,
+                            ),
                             role="tool",
                         )
                     )
@@ -1032,7 +1039,11 @@ class LangGraphAgent:
                     type=EventType.TOOL_CALL_RESULT,
                     tool_call_id=tool_call_output.tool_call_id,
                     message_id=str(uuid.uuid4()),
-                    content=dump_json_safe(tool_call_output.content),
+                    content=wrap_tool_result_content(
+                        tool_call_id=tool_call_output.tool_call_id,
+                        tool_name=getattr(tool_call_output, "name", None),
+                        raw_content=tool_call_output.content,
+                    ),
                     role="tool",
                 )
             )
@@ -1056,9 +1067,7 @@ class LangGraphAgent:
         ):
             if self.active_run["reasoning_process"].get("type"):
                 reasoning_process = self.active_run["reasoning_process"]
-                message_id = reasoning_process.get(
-                    "message_id", self.active_run["id"]
-                )
+                message_id = reasoning_process.get("message_id", self.active_run["id"])
                 yield self._dispatch_event(
                     ReasoningMessageEndEvent(
                         type=EventType.REASONING_MESSAGE_END,
@@ -1066,9 +1075,7 @@ class LangGraphAgent:
                     )
                 )
             reasoning_process = self.active_run["reasoning_process"]
-            reasoning_id = reasoning_process.get(
-                "reasoning_id", self.active_run["id"]
-            )
+            reasoning_id = reasoning_process.get("reasoning_id", self.active_run["id"])
             message_id = reasoning_process.get("message_id", reasoning_id)
 
             yield self._dispatch_event(

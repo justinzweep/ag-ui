@@ -1,15 +1,17 @@
+import ast
 import json
 import re
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime
 from enum import Enum
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 from ag_ui.core import (
     AssistantMessage as AGUIAssistantMessage,
 )
 from ag_ui.core import (
     BinaryInputContent,
+    ReasoningMessage,
     TextInputContent,
 )
 from ag_ui.core import (
@@ -17,9 +19,6 @@ from ag_ui.core import (
 )
 from ag_ui.core import (
     Message as AGUIMessage,
-)
-from ag_ui.core import (
-    ReasoningMessage,
 )
 from ag_ui.core import (
     SystemMessage as AGUISystemMessage,
@@ -74,6 +73,112 @@ def stringify_if_needed(item: Any) -> str:
     if isinstance(item, str):
         return item
     return json.dumps(item)
+
+
+def _try_parse_json(value: str) -> Any | None:
+    try:
+        return json.loads(value)
+    except Exception:
+        return None
+
+
+def _normalize_tool_result_data(raw_content: Any) -> Any:
+    """
+    Normalize tool output into a JSON-friendly value.
+
+    - Preserves structured tool outputs (dict/list/etc)
+    - If raw_content is a JSON string, parses it into structured data
+    - Falls back to a JSON-safe string/value
+    """
+    safe = make_json_safe(raw_content)
+    if isinstance(safe, str):
+        stripped = safe.strip()
+        if stripped.startswith("{") or stripped.startswith("["):
+            parsed = _try_parse_json(stripped)
+            if parsed is not None:
+                return parsed
+            # Some tool stacks stringify python literals (single quotes, True/False).
+            # Try to recover structured data safely.
+            try:
+                literal = ast.literal_eval(stripped)
+                # Keep only structured container types / primitives.
+                if (
+                    isinstance(literal, (dict, list, tuple, str, int, float, bool))
+                    or literal is None
+                ):
+                    return make_json_safe(literal)
+            except Exception:
+                pass
+    return safe
+
+
+def wrap_tool_result_content(
+    *,
+    tool_call_id: Optional[str],
+    tool_name: Optional[str],
+    raw_content: Any,
+    ok: Optional[bool] = None,
+) -> str:
+    """
+    Wrap tool results in a stable JSON envelope so clients can parse reliably.
+
+    Envelope shape (v1):
+      {
+        "ok": bool,
+        "tool": str | null,
+        "toolCallId": str | null,
+        "data": any,
+        "meta": { "format": "ag_ui_tool_result_v1" }
+      }
+
+    If raw_content is already an envelope (dict or JSON string), it is normalized
+    and returned without double-wrapping.
+    """
+    # Pass-through / normalize if already an envelope dict
+    if isinstance(raw_content, dict) and (
+        "data" in raw_content
+        and ("toolCallId" in raw_content or "tool_call_id" in raw_content)
+    ):
+        normalized = dict(raw_content)
+        normalized.setdefault("meta", {"format": "ag_ui_tool_result_v1"})
+        if "toolCallId" not in normalized and "tool_call_id" in normalized:
+            normalized["toolCallId"] = normalized.get("tool_call_id")
+        if tool_call_id and not normalized.get("toolCallId"):
+            normalized["toolCallId"] = tool_call_id
+        if tool_name and normalized.get("tool") is None:
+            normalized["tool"] = tool_name
+        if ok is not None:
+            normalized["ok"] = ok
+        return json.dumps(normalized, default=json_safe_stringify)
+
+    # If it's a JSON string that looks like an envelope, normalize and return
+    if isinstance(raw_content, str):
+        parsed = _try_parse_json(raw_content)
+        if isinstance(parsed, dict) and (
+            "data" in parsed and ("toolCallId" in parsed or "tool_call_id" in parsed)
+        ):
+            return wrap_tool_result_content(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                raw_content=parsed,
+                ok=ok,
+            )
+
+    data = _normalize_tool_result_data(raw_content)
+    if ok is None:
+        ok = not (
+            isinstance(data, dict)
+            and ("error" in data or "errors" in data or "exception" in data)
+        )
+
+    envelope: Dict[str, Any] = {
+        "ok": ok,
+        "tool": tool_name,
+        "toolCallId": tool_call_id,
+        "data": data,
+        "meta": {"format": "ag_ui_tool_result_v1"},
+    }
+    return json.dumps(envelope, default=json_safe_stringify)
 
 
 def convert_langchain_multimodal_to_agui(
@@ -198,12 +303,15 @@ def langchain_messages_to_agui(messages: List[BaseMessage]) -> List[AGUIMessage]
                 )
             )
         elif isinstance(message, ToolMessage):
+            tool_name = getattr(message, "name", None)
             agui_messages.append(
                 AGUIToolMessage(
                     id=str(message.id),
                     role="tool",
-                    content=stringify_if_needed(
-                        resolve_message_content(message.content)
+                    content=wrap_tool_result_content(
+                        tool_call_id=message.tool_call_id,
+                        tool_name=tool_name,
+                        raw_content=message.content,
                     ),
                     tool_call_id=message.tool_call_id,
                 )
