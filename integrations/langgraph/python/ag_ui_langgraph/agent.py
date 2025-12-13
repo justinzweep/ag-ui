@@ -1,6 +1,7 @@
 import hashlib
 import inspect
 import json
+import logging
 import uuid
 from typing import Any, AsyncGenerator, Dict, Generator, List, Literal, Optional, Union
 
@@ -68,6 +69,8 @@ from .utils import (
     resolve_reasoning_content,
     wrap_tool_result_content,
 )
+
+logger = logging.getLogger(__name__)
 
 ProcessedEvents = Union[
     TextMessageStartEvent,
@@ -486,9 +489,39 @@ class LangGraphAgent:
         if resume_input:
             # If the client provided an interrupt_id, resume that specific interrupt.
             # This matches LangGraph's documented multi-interrupt resume mapping.
-            resume_interrupt_id = (
-                getattr(input.resume, "interrupt_id", None) if input.resume else None
+            resume_interrupt_id: Optional[str] = None
+            if input.resume:
+                # Pydantic v2 model normally exposes `interrupt_id` (and accepts JSON `interruptId` via alias).
+                resume_interrupt_id = getattr(input.resume, "interrupt_id", None)
+                if not resume_interrupt_id:
+                    # Back-compat / tolerant parsing: some clients may send camelCase into models
+                    # that don't alias-generate. Try to read it if present.
+                    resume_interrupt_id = getattr(input.resume, "interruptId", None)
+                if not resume_interrupt_id:
+                    extra = getattr(input.resume, "__pydantic_extra__", None)
+                    if isinstance(extra, dict):
+                        resume_interrupt_id = extra.get("interrupt_id") or extra.get(
+                            "interruptId"
+                        )
+
+            # Never silently fall back to positional resume when multiple interrupts are pending.
+            if (not resume_interrupt_id) and has_active_interrupts:
+                if len(interrupts) == 1:
+                    resume_interrupt_id = self._get_langgraph_interrupt_id(
+                        interrupts[0]
+                    )
+                elif len(interrupts) > 1:
+                    raise ValueError(
+                        "Resume payload provided without interrupt_id/interruptId while multiple "
+                        "interrupts are pending. Client must send resume.interruptId (or resume.interrupt_id)."
+                    )
+
+            logger.debug(
+                "prepare_stream resume: interrupt_id=%s interrupts=%s",
+                resume_interrupt_id,
+                len(interrupts) if has_active_interrupts else 0,
             )
+
             if isinstance(resume_interrupt_id, str) and resume_interrupt_id:
                 stream_input = Command(resume={resume_interrupt_id: resume_input})
             else:

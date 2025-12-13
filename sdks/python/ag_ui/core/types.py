@@ -195,7 +195,9 @@ class Resume(ConfiguredBaseModel):
     Resume channel for continuing a suspended run.
     """
 
-    interrupt_id: Optional[str] = None
+    # Accept both snake_case and camelCase from clients.
+    # (camelCase is common in JS/TS clients, e.g. `interruptId`.)
+    interrupt_id: Optional[str] = Field(default=None, alias="interruptId")
     payload: Optional[Any] = None
 
 
