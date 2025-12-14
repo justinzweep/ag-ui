@@ -526,46 +526,9 @@ class LangGraphAgent:
                         "Client must send resume.interruptId to specify which interrupt to resume."
                     )
 
-            # Inject tool result as ToolMessage into state BEFORE resuming.
-            # This persists the client's tool result to LangGraph checkpointer for multi-turn context.
-            if resume_interrupt_id and has_active_interrupts:
-                matching_interrupt = None
-                for interrupt in interrupts:
-                    if self._get_langgraph_interrupt_id(interrupt) == resume_interrupt_id:
-                        matching_interrupt = interrupt
-                        break
-
-                if matching_interrupt:
-                    interrupt_value = getattr(matching_interrupt, "value", {})
-                    if isinstance(interrupt_value, dict):
-                        tool_call_id = interrupt_value.get("tool_call_id")
-                        tool_name = interrupt_value.get("tool")
-
-                        if tool_call_id:
-                            tool_message = ToolMessage(
-                                content=wrap_tool_result_content(
-                                    tool_call_id=tool_call_id,
-                                    tool_name=tool_name,
-                                    raw_content=resume_input,
-                                ),
-                                tool_call_id=tool_call_id,
-                                name=tool_name,
-                            )
-
-                            # Use the interrupted task's node name, not active_run["node_name"]
-                            # which is None on resume (reset in INITIAL_ACTIVE_RUN).
-                            # The task name tells us which node was interrupted.
-                            interrupted_node_name = (
-                                agent_state.tasks[0].name
-                                if agent_state.tasks and len(agent_state.tasks) > 0
-                                else None
-                            )
-
-                            await self.graph.aupdate_state(
-                                config,
-                                {"messages": [tool_message]},
-                                as_node=interrupted_node_name,
-                            )
+            # NOTE: We do NOT inject a ToolMessage here. LangGraph's ToolNode automatically
+            # creates a ToolMessage when the resumed interrupt() returns and the tool function
+            # completes. Explicitly injecting would create duplicate ToolMessages.
 
             # Determine resume form based on whether client provided an explicit interrupt_id.
             # Per LangGraph docs, mapping form {interrupt_id: payload} is used when targeting

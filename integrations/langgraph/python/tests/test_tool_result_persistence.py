@@ -1,8 +1,9 @@
 """
-Tests for tool result persistence during interrupt/resume flow.
+Tests for tool result handling during interrupt/resume flow.
 
-These tests verify that when a client resumes an interrupted run with a tool result,
-the result is properly persisted to LangGraph state as a ToolMessage.
+These tests verify that AG-UI does NOT explicitly inject ToolMessages during resume,
+as LangGraph's ToolNode automatically creates ToolMessages when the interrupted
+tool function completes.
 """
 
 import unittest
@@ -59,8 +60,12 @@ class MockAgentState:
             self.metadata = {"writes": {}}
 
 
-class TestToolResultInjection(unittest.TestCase):
-    """Tests for Issue 1: Tool results persisted to LangGraph state."""
+class TestNoExplicitToolMessageInjection(unittest.TestCase):
+    """Tests verifying AG-UI does NOT inject ToolMessages explicitly.
+
+    LangGraph's ToolNode automatically creates ToolMessages when a tool function
+    returns after an interrupt() resumes. Explicit injection would create duplicates.
+    """
 
     def setUp(self):
         """Set up test fixtures."""
@@ -78,8 +83,8 @@ class TestToolResultInjection(unittest.TestCase):
 
         self.agent = LangGraphAgent(name="test-agent", graph=self.mock_graph)
 
-    def test_resume_injects_tool_message(self):
-        """Tool result should be injected as ToolMessage before resume."""
+    def test_resume_does_not_call_aupdate_state_for_tool_message(self):
+        """Resume should NOT call aupdate_state to inject ToolMessage."""
         import asyncio
 
         async def run_test():
@@ -127,93 +132,33 @@ class TestToolResultInjection(unittest.TestCase):
 
             await self.agent.prepare_stream(input_data, agent_state, config)
 
-            # Verify aupdate_state was called to inject the ToolMessage
-            self.mock_graph.aupdate_state.assert_called()
-            call_args = self.mock_graph.aupdate_state.call_args
-
-            # Check the state update contains a messages key with ToolMessage
-            state_update = call_args[0][1]  # Second positional arg
-            self.assertIn("messages", state_update)
-            self.assertEqual(len(state_update["messages"]), 1)
-
-            tool_message = state_update["messages"][0]
-            self.assertEqual(tool_message.tool_call_id, "tc-123")
-            self.assertEqual(tool_message.name, "read_file")
+            # Verify aupdate_state was NOT called with ToolMessage
+            # LangGraph's ToolNode will handle creating the ToolMessage naturally
+            for call_args in self.mock_graph.aupdate_state.call_args_list:
+                if len(call_args[0]) > 1:
+                    state_update = call_args[0][1]
+                    if "messages" in state_update:
+                        from langchain_core.messages import ToolMessage
+                        for msg in state_update.get("messages", []):
+                            self.assertNotIsInstance(
+                                msg,
+                                ToolMessage,
+                                "ToolMessage should not be explicitly injected - "
+                                "LangGraph ToolNode handles this automatically",
+                            )
 
         asyncio.run(run_test())
 
-    def test_resume_uses_task_name_for_as_node(self):
-        """aupdate_state should use task name as as_node, not active_run['node_name']."""
+    def test_resume_creates_command_with_resume_payload(self):
+        """Resume should create a Command with the resume payload for astream_events."""
         import asyncio
 
         async def run_test():
-            # Set up agent state with task named "my_tools_node"
             interrupt = MockInterrupt(
                 id="int-abc",
                 value={
                     "tool": "read_file",
                     "tool_call_id": "tc-123",
-                    "reason": "human_approval",
-                },
-            )
-            task = MockTask(name="my_tools_node", interrupts=[interrupt])
-            agent_state = MockAgentState(tasks=[task], values={"messages": []})
-            config = {"configurable": {"thread_id": "thread-1"}}
-
-            # Initialize active_run with a DIFFERENT node_name to verify it's not used
-            self.agent.active_run = {
-                "id": "run-1",
-                "thread_id": "thread-1",
-                "reasoning_process": None,
-                "node_name": "wrong_node",  # This should NOT be used
-                "has_function_streaming": False,
-                "mode": "start",
-            }
-
-            resume = Resume(
-                interrupt_id="int-abc",
-                payload={"content": "file contents here", "success": True},
-            )
-            input_data = RunAgentInput(
-                thread_id="thread-1",
-                run_id="run-1",
-                state={},
-                messages=[],
-                tools=[],
-                context=[],
-                forwarded_props={},
-                resume=resume,
-            )
-
-            self.agent.get_stream_kwargs = MagicMock(return_value={})
-
-            await self.agent.prepare_stream(input_data, agent_state, config)
-
-            # Verify aupdate_state was called with as_node="my_tools_node" (task name)
-            self.mock_graph.aupdate_state.assert_called()
-            call_args = self.mock_graph.aupdate_state.call_args
-
-            # Check that as_node is the task name, not active_run["node_name"]
-            as_node = call_args[1].get("as_node") if call_args[1] else call_args[0][2]
-            self.assertEqual(
-                as_node,
-                "my_tools_node",
-                "as_node should be the task name from agent_state.tasks[0].name",
-            )
-
-        asyncio.run(run_test())
-
-    def test_resume_without_tool_context_skips_injection(self):
-        """Resume without tool_call_id in interrupt should skip ToolMessage injection."""
-        import asyncio
-
-        async def run_test():
-            # Set up agent state with an interrupt WITHOUT tool context
-            interrupt = MockInterrupt(
-                id="int-abc",
-                value={
-                    "reason": "human_approval",
-                    # No tool or tool_call_id
                 },
             )
             task = MockTask(interrupts=[interrupt])
@@ -224,14 +169,14 @@ class TestToolResultInjection(unittest.TestCase):
                 "id": "run-1",
                 "thread_id": "thread-1",
                 "reasoning_process": None,
-                "node_name": "some_node",
+                "node_name": "tool_node",
                 "has_function_streaming": False,
                 "mode": "start",
             }
 
             resume = Resume(
                 interrupt_id="int-abc",
-                payload={"approved": True},
+                payload={"content": "file contents here"},
             )
             input_data = RunAgentInput(
                 thread_id="thread-1",
@@ -244,25 +189,27 @@ class TestToolResultInjection(unittest.TestCase):
                 resume=resume,
             )
 
-            self.agent.get_stream_kwargs = MagicMock(return_value={})
+            # Mock get_stream_kwargs to capture what input is passed
+            captured_input = None
+
+            def capture_stream_kwargs(input, config, subgraphs, version):
+                nonlocal captured_input
+                captured_input = input
+                return {}
+
+            self.agent.get_stream_kwargs = MagicMock(side_effect=capture_stream_kwargs)
 
             await self.agent.prepare_stream(input_data, agent_state, config)
 
-            # Verify aupdate_state was NOT called for ToolMessage injection
-            # (it might be called for other reasons, but not with messages containing ToolMessage)
-            for call_args in self.mock_graph.aupdate_state.call_args_list:
-                state_update = call_args[0][1] if len(call_args[0]) > 1 else {}
-                if "messages" in state_update:
-                    # If messages is in the update, it shouldn't be from tool injection
-                    # since there's no tool_call_id in the interrupt
-                    from langchain_core.messages import ToolMessage
-
-                    for msg in state_update.get("messages", []):
-                        self.assertNotIsInstance(
-                            msg,
-                            ToolMessage,
-                            "ToolMessage should not be injected without tool_call_id",
-                        )
+            # Verify the stream input is a Command with the resume mapping
+            from langgraph.types import Command
+            self.assertIsInstance(captured_input, Command)
+            # Command.resume should contain the interrupt_id mapping to payload
+            self.assertIn("int-abc", captured_input.resume)
+            self.assertEqual(
+                captured_input.resume["int-abc"],
+                {"content": "file contents here"},
+            )
 
         asyncio.run(run_test())
 
