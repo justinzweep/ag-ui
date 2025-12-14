@@ -8,10 +8,10 @@ tool function completes.
 
 import unittest
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
-from unittest.mock import AsyncMock, MagicMock, call
+from typing import Any, Dict, List
+from unittest.mock import AsyncMock, MagicMock
 
-from ag_ui.core import EventType, Resume, RunAgentInput
+from ag_ui.core import Resume, RunAgentInput
 
 
 @dataclass
@@ -139,6 +139,7 @@ class TestNoExplicitToolMessageInjection(unittest.TestCase):
                     state_update = call_args[0][1]
                     if "messages" in state_update:
                         from langchain_core.messages import ToolMessage
+
                         for msg in state_update.get("messages", []):
                             self.assertNotIsInstance(
                                 msg,
@@ -203,6 +204,7 @@ class TestNoExplicitToolMessageInjection(unittest.TestCase):
 
             # Verify the stream input is a Command with the resume mapping
             from langgraph.types import Command
+
             self.assertIsInstance(captured_input, Command)
             # Command.resume should contain the interrupt_id mapping to payload
             self.assertIn("int-abc", captured_input.resume)
