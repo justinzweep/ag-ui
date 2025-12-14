@@ -358,21 +358,25 @@ class LangGraphAgent:
 
         # Emit RunFinishedEvent with interrupt-aware fields
         if interrupts:
-            # Run is paused waiting for human input
-            interrupt_data = interrupts[0]
+            # Run is paused waiting for human input - build list of ALL interrupts
+            all_interrupts = [
+                Interrupt(
+                    id=self._get_langgraph_interrupt_id(interrupt_data),
+                    reason=self._get_interrupt_reason([interrupt_data]),
+                    payload=dump_json_safe(interrupt_data.value)
+                    if hasattr(interrupt_data, "value")
+                    else None,
+                )
+                for interrupt_data in interrupts
+            ]
             yield self._dispatch_event(
                 RunFinishedEvent(
                     type=EventType.RUN_FINISHED,
                     thread_id=thread_id,
                     run_id=self.active_run["id"],
                     outcome="interrupt",
-                    interrupt=Interrupt(
-                        id=self._get_langgraph_interrupt_id(interrupt_data),
-                        reason=self._get_interrupt_reason(interrupts),
-                        payload=dump_json_safe(interrupt_data.value)
-                        if hasattr(interrupt_data, "value")
-                        else None,
-                    ),
+                    interrupt=all_interrupts[0] if all_interrupts else None,
+                    interrupts=all_interrupts,
                 )
             )
         else:
@@ -457,21 +461,25 @@ class LangGraphAgent:
                     )
                 )
 
-            # Emit RunFinishedEvent with interrupt-aware fields
-            interrupt_data = interrupts[0] if interrupts else None
+            # Emit RunFinishedEvent with interrupt-aware fields - include ALL interrupts
+            all_interrupts = [
+                Interrupt(
+                    id=self._get_langgraph_interrupt_id(interrupt_data),
+                    reason=self._get_interrupt_reason([interrupt_data]),
+                    payload=dump_json_safe(interrupt_data.value)
+                    if hasattr(interrupt_data, "value")
+                    else None,
+                )
+                for interrupt_data in interrupts
+            ]
             events_to_dispatch.append(
                 RunFinishedEvent(
                     type=EventType.RUN_FINISHED,
                     thread_id=thread_id,
                     run_id=self.active_run["id"],
                     outcome="interrupt",
-                    interrupt=Interrupt(
-                        id=self._get_langgraph_interrupt_id(interrupt_data),
-                        reason=self._get_interrupt_reason(interrupts),
-                        payload=dump_json_safe(interrupt_data.value)
-                        if interrupt_data and hasattr(interrupt_data, "value")
-                        else None,
-                    ),
+                    interrupt=all_interrupts[0] if all_interrupts else None,
+                    interrupts=all_interrupts,
                 )
             )
             return {
@@ -511,44 +519,61 @@ class LangGraphAgent:
                         interrupts[0]
                     )
                 elif len(interrupts) > 1:
+                    interrupt_ids = [self._get_langgraph_interrupt_id(i) for i in interrupts]
                     raise ValueError(
-                        "Resume payload provided without interrupt_id/interruptId while multiple "
-                        "interrupts are pending. Client must send resume.interruptId (or resume.interrupt_id)."
+                        f"Resume payload provided without interrupt_id while {len(interrupts)} "
+                        f"interrupts are pending (ids: {interrupt_ids}). "
+                        "Client must send resume.interruptId to specify which interrupt to resume."
                     )
 
-            # Determine resume form based on interrupt count (per LangGraph docs):
-            # - Single interrupt: ALWAYS use scalar form for robustness
-            # - Multiple interrupts: use mapping form {interrupt_id: payload}
-            num_interrupts = len(interrupts) if has_active_interrupts else 0
+            # Inject tool result as ToolMessage into state BEFORE resuming.
+            # This persists the client's tool result to LangGraph checkpointer for multi-turn context.
+            if resume_interrupt_id and has_active_interrupts:
+                matching_interrupt = None
+                for interrupt in interrupts:
+                    if self._get_langgraph_interrupt_id(interrupt) == resume_interrupt_id:
+                        matching_interrupt = interrupt
+                        break
 
-            if num_interrupts == 1:
-                # Single interrupt: always use scalar form to avoid index-based resume pitfalls
+                if matching_interrupt:
+                    interrupt_value = getattr(matching_interrupt, "value", {})
+                    if isinstance(interrupt_value, dict):
+                        tool_call_id = interrupt_value.get("tool_call_id")
+                        tool_name = interrupt_value.get("tool")
+
+                        if tool_call_id:
+                            tool_message = ToolMessage(
+                                content=wrap_tool_result_content(
+                                    tool_call_id=tool_call_id,
+                                    tool_name=tool_name,
+                                    raw_content=resume_input,
+                                ),
+                                tool_call_id=tool_call_id,
+                                name=tool_name,
+                            )
+
+                            await self.graph.aupdate_state(
+                                config,
+                                {"messages": [tool_message]},
+                                as_node=self.active_run.get("node_name"),
+                            )
+
+            # Determine resume form based on whether client provided an explicit interrupt_id.
+            # Per LangGraph docs, mapping form {interrupt_id: payload} is used when targeting
+            # a specific interrupt. If client explicitly provides an interrupt_id, honor it
+            # by using the mapping form; otherwise use scalar form.
+            if isinstance(resume_interrupt_id, str) and resume_interrupt_id:
+                # Client provided explicit interrupt_id: use mapping form
                 logger.debug(
-                    "prepare_stream resume: SCALAR form (single interrupt), "
-                    "client_interrupt_id=%s",
+                    "prepare_stream resume: MAPPING form (explicit interrupt_id), "
+                    "interrupt_id=%s",
                     resume_interrupt_id,
-                )
-                stream_input = Command(resume=resume_input)
-            elif (
-                num_interrupts > 1
-                and isinstance(resume_interrupt_id, str)
-                and resume_interrupt_id
-            ):
-                # Multiple interrupts: use mapping form to target specific interrupt
-                logger.debug(
-                    "prepare_stream resume: MAPPING form (multi-interrupt), "
-                    "interrupt_id=%s num_interrupts=%s",
-                    resume_interrupt_id,
-                    num_interrupts,
                 )
                 stream_input = Command(resume={resume_interrupt_id: resume_input})
             else:
-                # No active interrupts or edge case: use scalar form
+                # No explicit interrupt_id: use scalar form
                 logger.debug(
-                    "prepare_stream resume: SCALAR form (fallback), "
-                    "interrupt_id=%s num_interrupts=%s",
-                    resume_interrupt_id,
-                    num_interrupts,
+                    "prepare_stream resume: SCALAR form (no explicit interrupt_id)"
                 )
                 stream_input = Command(resume=resume_input)
         else:

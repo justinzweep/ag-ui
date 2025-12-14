@@ -313,6 +313,7 @@ class RunFinishedEvent(BaseEvent):
     outcome: Optional[RunFinishedOutcome] = None
     result: Optional[Any] = None
     interrupt: Optional[Interrupt] = None
+    interrupts: Optional[List[Interrupt]] = None
 
 
 class RunErrorEvent(BaseEvent):

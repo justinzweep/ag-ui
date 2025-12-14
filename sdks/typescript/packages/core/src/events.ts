@@ -202,6 +202,7 @@ export const RunFinishedEventSchema = BaseEventSchema.extend({
   outcome: RunFinishedOutcomeSchema.optional(),
   result: z.any().optional(),
   interrupt: InterruptSchema.optional(),
+  interrupts: z.array(InterruptSchema).optional(),
 });
 
 export const RunErrorEventSchema = BaseEventSchema.extend({

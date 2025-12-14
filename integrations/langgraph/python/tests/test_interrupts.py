@@ -262,6 +262,50 @@ class TestRunFinishedEventWithInterrupt(unittest.TestCase):
         self.assertEqual(event.interrupt.id, "int-123")
         self.assertEqual(event.interrupt.reason, "human_approval")
 
+    def test_run_finished_multiple_interrupts_schema(self):
+        """Should create valid RunFinishedEvent with multiple interrupts."""
+        from ag_ui.core import Interrupt, RunFinishedEvent
+
+        interrupts = [
+            Interrupt(id="int-1", reason="human_approval", payload={"tool": "tool_a"}),
+            Interrupt(id="int-2", reason="human_approval", payload={"tool": "tool_b"}),
+            Interrupt(id="int-3", reason="human_approval", payload={"tool": "tool_c"}),
+        ]
+
+        event = RunFinishedEvent(
+            type=EventType.RUN_FINISHED,
+            thread_id="thread-1",
+            run_id="run-1",
+            outcome="interrupt",
+            interrupt=interrupts[0],  # backwards compat
+            interrupts=interrupts,  # all interrupts
+        )
+
+        self.assertEqual(event.type, EventType.RUN_FINISHED)
+        self.assertEqual(event.outcome, "interrupt")
+        # Check backwards compat field
+        self.assertEqual(event.interrupt.id, "int-1")
+        # Check new interrupts field
+        self.assertEqual(len(event.interrupts), 3)
+        self.assertEqual(event.interrupts[0].id, "int-1")
+        self.assertEqual(event.interrupts[1].id, "int-2")
+        self.assertEqual(event.interrupts[2].id, "int-3")
+
+    def test_run_finished_interrupts_backwards_compatible(self):
+        """Should allow RunFinishedEvent without interrupts field for backwards compat."""
+        from ag_ui.core import Interrupt, RunFinishedEvent
+
+        event = RunFinishedEvent(
+            type=EventType.RUN_FINISHED,
+            thread_id="thread-1",
+            run_id="run-1",
+            outcome="interrupt",
+            interrupt=Interrupt(id="int-123", reason="human_approval"),
+        )
+
+        self.assertEqual(event.interrupt.id, "int-123")
+        self.assertIsNone(event.interrupts)
+
     def test_langgraph_interrupt_id_should_be_forwarded(self):
         """Integration should forward LangGraph Interrupt.id (stable)."""
         from ag_ui_langgraph.agent import LangGraphAgent
