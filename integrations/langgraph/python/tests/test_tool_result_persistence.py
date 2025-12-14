@@ -33,6 +33,7 @@ class MockInterrupt:
 class MockTask:
     """Mock LangGraph task with interrupts."""
 
+    name: str = "tools"  # Node name where the task is executing
     interrupts: List[MockInterrupt] = None
 
     def __post_init__(self):
@@ -138,6 +139,67 @@ class TestToolResultInjection(unittest.TestCase):
             tool_message = state_update["messages"][0]
             self.assertEqual(tool_message.tool_call_id, "tc-123")
             self.assertEqual(tool_message.name, "read_file")
+
+        asyncio.run(run_test())
+
+    def test_resume_uses_task_name_for_as_node(self):
+        """aupdate_state should use task name as as_node, not active_run['node_name']."""
+        import asyncio
+
+        async def run_test():
+            # Set up agent state with task named "my_tools_node"
+            interrupt = MockInterrupt(
+                id="int-abc",
+                value={
+                    "tool": "read_file",
+                    "tool_call_id": "tc-123",
+                    "reason": "human_approval",
+                },
+            )
+            task = MockTask(name="my_tools_node", interrupts=[interrupt])
+            agent_state = MockAgentState(tasks=[task], values={"messages": []})
+            config = {"configurable": {"thread_id": "thread-1"}}
+
+            # Initialize active_run with a DIFFERENT node_name to verify it's not used
+            self.agent.active_run = {
+                "id": "run-1",
+                "thread_id": "thread-1",
+                "reasoning_process": None,
+                "node_name": "wrong_node",  # This should NOT be used
+                "has_function_streaming": False,
+                "mode": "start",
+            }
+
+            resume = Resume(
+                interrupt_id="int-abc",
+                payload={"content": "file contents here", "success": True},
+            )
+            input_data = RunAgentInput(
+                thread_id="thread-1",
+                run_id="run-1",
+                state={},
+                messages=[],
+                tools=[],
+                context=[],
+                forwarded_props={},
+                resume=resume,
+            )
+
+            self.agent.get_stream_kwargs = MagicMock(return_value={})
+
+            await self.agent.prepare_stream(input_data, agent_state, config)
+
+            # Verify aupdate_state was called with as_node="my_tools_node" (task name)
+            self.mock_graph.aupdate_state.assert_called()
+            call_args = self.mock_graph.aupdate_state.call_args
+
+            # Check that as_node is the task name, not active_run["node_name"]
+            as_node = call_args[1].get("as_node") if call_args[1] else call_args[0][2]
+            self.assertEqual(
+                as_node,
+                "my_tools_node",
+                "as_node should be the task name from agent_state.tasks[0].name",
+            )
 
         asyncio.run(run_test())
 

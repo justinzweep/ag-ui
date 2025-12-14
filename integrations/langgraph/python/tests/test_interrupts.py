@@ -21,6 +21,7 @@ class MockInterrupt:
 class MockTask:
     """Mock LangGraph task with interrupts."""
 
+    name: str = "tools"  # Node name where the task is executing
     interrupts: List[MockInterrupt] = None
 
     def __post_init__(self):

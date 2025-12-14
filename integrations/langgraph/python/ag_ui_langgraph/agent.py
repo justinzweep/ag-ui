@@ -552,10 +552,19 @@ class LangGraphAgent:
                                 name=tool_name,
                             )
 
+                            # Use the interrupted task's node name, not active_run["node_name"]
+                            # which is None on resume (reset in INITIAL_ACTIVE_RUN).
+                            # The task name tells us which node was interrupted.
+                            interrupted_node_name = (
+                                agent_state.tasks[0].name
+                                if agent_state.tasks and len(agent_state.tasks) > 0
+                                else None
+                            )
+
                             await self.graph.aupdate_state(
                                 config,
                                 {"messages": [tool_message]},
-                                as_node=self.active_run.get("node_name"),
+                                as_node=interrupted_node_name,
                             )
 
             # Determine resume form based on whether client provided an explicit interrupt_id.
