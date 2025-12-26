@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, mock } from "bun:test";
 import { AbstractAgent } from "@/agent";
 import { AgentSubscriber } from "@/agent/subscriber";
 import {
@@ -12,17 +13,17 @@ import {
   RunStartedEvent,
 } from "@ag-ui/core";
 import { Observable, of } from "rxjs";
+import * as actualUtils from "@/utils";
 
 // Mock uuid module
-jest.mock("uuid", () => ({
-  v4: jest.fn().mockReturnValue("mock-uuid"),
+mock.module("uuid", () => ({
+  v4: mock(() => "mock-uuid"),
 }));
 
 // Mock utils with handling for undefined values
-jest.mock("@/utils", () => {
-  const actual = jest.requireActual<typeof import("@/utils")>("@/utils");
+mock.module("@/utils", () => {
   return {
-    ...actual,
+    ...actualUtils,
     structuredClone_: (obj: any) => {
       if (obj === undefined) return undefined;
       const jsonString = JSON.stringify(obj);
@@ -33,12 +34,12 @@ jest.mock("@/utils", () => {
 });
 
 // Mock the verify modules but NOT apply - we want to test against real defaultApplyEvents
-jest.mock("@/verify", () => ({
-  verifyEvents: jest.fn(() => (source$: Observable<any>) => source$),
+mock.module("@/verify", () => ({
+  verifyEvents: mock(() => (source$: Observable<any>) => source$),
 }));
 
-jest.mock("@/chunks", () => ({
-  transformChunks: jest.fn(() => (source$: Observable<any>) => source$),
+mock.module("@/chunks", () => ({
+  transformChunks: mock(() => (source$: Observable<any>) => source$),
 }));
 
 // Create a test agent implementation
@@ -59,8 +60,6 @@ describe("defaultApplyEvents with reasoning events", () => {
   let mockSubscriber: AgentSubscriber;
 
   beforeEach(() => {
-    jest.clearAllMocks();
-
     agent = new TestAgent({
       threadId: "test-thread",
       initialMessages: [],
@@ -68,11 +67,11 @@ describe("defaultApplyEvents with reasoning events", () => {
     });
 
     mockSubscriber = {
-      onReasoningStartEvent: jest.fn(),
-      onReasoningMessageStartEvent: jest.fn(),
-      onReasoningMessageContentEvent: jest.fn(),
-      onReasoningMessageEndEvent: jest.fn(),
-      onReasoningEndEvent: jest.fn(),
+      onReasoningStartEvent: mock(),
+      onReasoningMessageStartEvent: mock(),
+      onReasoningMessageContentEvent: mock(),
+      onReasoningMessageEndEvent: mock(),
+      onReasoningEndEvent: mock(),
     };
   });
 
@@ -81,19 +80,19 @@ describe("defaultApplyEvents with reasoning events", () => {
       const callOrder: string[] = [];
 
       const trackingSubscriber: AgentSubscriber = {
-        onReasoningStartEvent: jest.fn().mockImplementation(() => {
+        onReasoningStartEvent: mock(() => {
           callOrder.push("REASONING_START");
         }),
-        onReasoningMessageStartEvent: jest.fn().mockImplementation(() => {
+        onReasoningMessageStartEvent: mock(() => {
           callOrder.push("REASONING_MESSAGE_START");
         }),
-        onReasoningMessageContentEvent: jest.fn().mockImplementation(() => {
+        onReasoningMessageContentEvent: mock(() => {
           callOrder.push("REASONING_MESSAGE_CONTENT");
         }),
-        onReasoningMessageEndEvent: jest.fn().mockImplementation(() => {
+        onReasoningMessageEndEvent: mock(() => {
           callOrder.push("REASONING_MESSAGE_END");
         }),
-        onReasoningEndEvent: jest.fn().mockImplementation(() => {
+        onReasoningEndEvent: mock(() => {
           callOrder.push("REASONING_END");
         }),
       };
@@ -472,12 +471,12 @@ describe("defaultApplyEvents with reasoning events", () => {
   describe("Subscriber Mutation Support", () => {
     it("should allow subscribers to mutate state on reasoning events", async () => {
       const mutatingSubscriber: AgentSubscriber = {
-        onReasoningStartEvent: jest.fn().mockReturnValue({
+        onReasoningStartEvent: mock(() => ({
           state: { isReasoning: true },
-        }),
-        onReasoningEndEvent: jest.fn().mockReturnValue({
+        })),
+        onReasoningEndEvent: mock(() => ({
           state: { isReasoning: false, reasoningComplete: true },
-        }),
+        })),
       };
 
       agent.subscribe(mutatingSubscriber);
@@ -500,13 +499,13 @@ describe("defaultApplyEvents with reasoning events", () => {
 
     it("should support stopPropagation on reasoning events", async () => {
       const blockingSubscriber: AgentSubscriber = {
-        onReasoningStartEvent: jest.fn().mockReturnValue({
+        onReasoningStartEvent: mock(() => ({
           stopPropagation: true,
-        }),
+        })),
       };
 
       const secondSubscriber: AgentSubscriber = {
-        onReasoningStartEvent: jest.fn(),
+        onReasoningStartEvent: mock(),
       };
 
       agent.subscribe(blockingSubscriber);
@@ -530,22 +529,22 @@ describe("defaultApplyEvents with reasoning events", () => {
       const callOrder: string[] = [];
 
       const trackingSubscriber: AgentSubscriber = {
-        onReasoningStartEvent: jest.fn().mockImplementation(() => {
+        onReasoningStartEvent: mock(() => {
           callOrder.push("REASONING_START");
         }),
-        onReasoningMessageContentEvent: jest.fn().mockImplementation(() => {
+        onReasoningMessageContentEvent: mock(() => {
           callOrder.push("REASONING_MESSAGE_CONTENT");
         }),
-        onReasoningEndEvent: jest.fn().mockImplementation(() => {
+        onReasoningEndEvent: mock(() => {
           callOrder.push("REASONING_END");
         }),
-        onTextMessageStartEvent: jest.fn().mockImplementation(() => {
+        onTextMessageStartEvent: mock(() => {
           callOrder.push("TEXT_MESSAGE_START");
         }),
-        onTextMessageContentEvent: jest.fn().mockImplementation(() => {
+        onTextMessageContentEvent: mock(() => {
           callOrder.push("TEXT_MESSAGE_CONTENT");
         }),
-        onTextMessageEndEvent: jest.fn().mockImplementation(() => {
+        onTextMessageEndEvent: mock(() => {
           callOrder.push("TEXT_MESSAGE_END");
         }),
       };
