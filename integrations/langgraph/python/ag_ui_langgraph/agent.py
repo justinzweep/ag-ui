@@ -107,7 +107,7 @@ class LangGraphAgent:
         self.config = config or {}
         self.messages_in_process: MessagesInProgressRecord = {}
         self.active_run: Optional[RunMetadata] = None
-        self.constant_schema_keys = ["messages", "tools"]
+        self.constant_schema_keys = ["messages", "tools", "token_usage"]
 
     def _dispatch_event(self, event: ProcessedEvents) -> str:
         if event.type == EventType.RAW:
