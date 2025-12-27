@@ -229,6 +229,54 @@ def convert_langchain_multimodal_to_agui(
     return agui_content
 
 
+def interleave_reasoning_messages(
+    agui_messages: List[AGUIMessage],
+    reasoning_messages: List[ReasoningMessage],
+) -> List[AGUIMessage]:
+    """
+    Insert accumulated streaming reasoning messages before their corresponding assistant messages.
+
+    This ensures reasoning is preserved in MESSAGES_SNAPSHOT even when the LLM provider
+    doesn't persist reasoning content in the final AIMessage (e.g., Anthropic extended thinking).
+
+    The function matches reasoning messages to assistant messages by order: the first
+    accumulated reasoning goes before the first assistant message, etc.
+
+    Args:
+        agui_messages: Messages converted from LangChain (may already have reasoning from AIMessage content)
+        reasoning_messages: Accumulated streaming reasoning messages
+
+    Returns:
+        Messages with streaming reasoning interleaved before assistant messages
+    """
+    if not reasoning_messages:
+        return agui_messages
+
+    result: List[AGUIMessage] = []
+    reasoning_iter = iter(reasoning_messages)
+    current_reasoning = next(reasoning_iter, None)
+
+    for msg in agui_messages:
+        # Skip reasoning messages that were already extracted from AIMessage content
+        # (langchain_messages_to_agui already extracts reasoning from content blocks)
+        if msg.role == "reasoning":
+            result.append(msg)
+            continue
+
+        # Insert accumulated streaming reasoning before assistant message
+        if msg.role == "assistant" and current_reasoning is not None:
+            # Check if this reasoning isn't already in the result
+            # (to avoid duplicates if langchain_messages_to_agui already extracted it)
+            existing_ids = {m.id for m in result if m.role == "reasoning"}
+            if current_reasoning.id not in existing_ids:
+                result.append(current_reasoning)
+            current_reasoning = next(reasoning_iter, None)
+
+        result.append(msg)
+
+    return result
+
+
 def langchain_messages_to_agui(messages: List[BaseMessage]) -> List[AGUIMessage]:
     agui_messages: List[AGUIMessage] = []
     for message in messages:
