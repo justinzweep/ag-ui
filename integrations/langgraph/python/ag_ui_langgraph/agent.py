@@ -62,7 +62,6 @@ from .utils import (
     camel_to_snake,
     filter_object_by_schema_keys,
     get_stream_payload_input,
-    interleave_reasoning_messages,
     json_safe_stringify,
     langchain_messages_to_agui,
     make_json_safe,
@@ -344,17 +343,13 @@ class LangGraphAgent:
         for ev in self.finalize_pending_reasoning():
             yield ev
 
-        # Build messages snapshot with accumulated streaming reasoning interleaved
-        # This ensures reasoning is preserved even if the LLM provider doesn't persist
-        # reasoning content in the final AIMessage (e.g., Anthropic extended thinking)
+        # Build messages snapshot - reasoning is now extracted from AIMessages automatically
         agui_messages = langchain_messages_to_agui(state_values.get("messages", []))
-        accumulated_reasoning = self.active_run.get("reasoning_messages", [])
-        all_messages = interleave_reasoning_messages(agui_messages, accumulated_reasoning)
 
         yield self._dispatch_event(
             MessagesSnapshotEvent(
                 type=EventType.MESSAGES_SNAPSHOT,
-                messages=all_messages,
+                messages=agui_messages,
             )
         )
 
@@ -1160,7 +1155,7 @@ class LangGraphAgent:
 
         if (
             self.active_run.get("reasoning_process")
-            and self.active_run["reasoning_process"].get("index") is not None
+            and self.active_run["reasoning_process"].get("index")
             and self.active_run["reasoning_process"]["index"] != reasoning_step_index
         ):
             if self.active_run["reasoning_process"].get("type"):
