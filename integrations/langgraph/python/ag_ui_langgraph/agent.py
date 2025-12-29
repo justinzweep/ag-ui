@@ -177,7 +177,7 @@ class LangGraphAgent:
             "thread_id": thread_id,
             "reasoning_process": None,
             "node_name": None,
-            "has_function_streaming": False,
+            "streamed_tool_call_ids": set(),
             "reasoning_messages": [],
         }
         self.active_run = INITIAL_ACTIVE_RUN
@@ -783,12 +783,9 @@ class LangGraphAgent:
                 and not tool_call_data
             )
 
-            if (
-                is_tool_call_start_event
-                or is_tool_call_end_event
-                or is_tool_call_args_event
-            ):
-                self.active_run["has_function_streaming"] = True
+            # Track which tool calls have been streamed (for fallback logic)
+            if is_tool_call_start_event and tool_call_data.get("id"):
+                self.active_run["streamed_tool_call_ids"].add(tool_call_data["id"])
 
             reasoning_data = (
                 resolve_reasoning_content(event["data"]["chunk"])
@@ -1060,7 +1057,8 @@ class LangGraphAgent:
 
                 # Process each tool message
                 for tool_msg in tool_messages:
-                    if not self.active_run["has_function_streaming"]:
+                    # Only emit fallback events if this tool call wasn't streamed
+                    if tool_msg.tool_call_id not in self.active_run.get("streamed_tool_call_ids", set()):
                         yield self._dispatch_event(
                             ToolCallStartEvent(
                                 type=EventType.TOOL_CALL_START,
@@ -1101,7 +1099,8 @@ class LangGraphAgent:
                     )
                 return
 
-            if not self.active_run["has_function_streaming"]:
+            # Only emit fallback events if this tool call wasn't streamed
+            if tool_call_output.tool_call_id not in self.active_run.get("streamed_tool_call_ids", set()):
                 yield self._dispatch_event(
                     ToolCallStartEvent(
                         type=EventType.TOOL_CALL_START,

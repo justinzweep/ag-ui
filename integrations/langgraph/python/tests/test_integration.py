@@ -417,7 +417,7 @@ class TestToolCallIntegration(unittest.IsolatedAsyncioTestCase):
         tool_msg = ToolMessage(
             id="tool-msg-1",
             tool_call_id="call-123",
-            name="vector_search",
+            name="document_search",
             content="Found 9 results",
         )
         event = {
@@ -437,7 +437,7 @@ class TestToolCallIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertIn("data", payload)
         self.assertIn("toolCallId", payload)
         self.assertEqual(payload["toolCallId"], "call-123")
-        self.assertEqual(payload.get("tool"), "vector_search")
+        self.assertEqual(payload.get("tool"), "document_search")
         self.assertEqual(payload["data"], "Found 9 results")
 
     async def test_langchain_tool_message_snapshot_is_enveloped(self):
