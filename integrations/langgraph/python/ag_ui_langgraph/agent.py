@@ -801,8 +801,14 @@ class LangGraphAgent:
                     for predict_tool in predict_state_metadata
                 )
 
+            # Allow tool call start when:
+            # 1. No current stream, OR
+            # 2. Current stream is a text message (not a tool call) - we'll end the text first
             is_tool_call_start_event = (
-                not has_current_stream and tool_call_data and tool_call_data.get("name")
+                (not has_current_stream or
+                 (current_stream and not current_stream.get("tool_call_id")))
+                and tool_call_data
+                and tool_call_data.get("name")
             )
             is_tool_call_args_event = (
                 has_current_stream
@@ -846,10 +852,12 @@ class LangGraphAgent:
                 else None
             )
             is_message_content_event = tool_call_data is None and message_content
+            # Don't end text message here if a tool call is starting - let tool call handler do it
             is_message_end_event = (
                 has_current_stream
                 and not current_stream.get("tool_call_id")
                 and not is_message_content_event
+                and not is_tool_call_start_event  # Let tool call start handler end the text message
             )
 
             if reasoning_data:
@@ -933,6 +941,17 @@ class LangGraphAgent:
                 return
 
             if is_tool_call_start_event and should_emit_tool_calls:
+                # If there's an ongoing text message, end it first before starting tool call
+                if current_stream and current_stream.get("id") and not current_stream.get("tool_call_id"):
+                    yield self._dispatch_event(
+                        TextMessageEndEvent(
+                            type=EventType.TEXT_MESSAGE_END,
+                            message_id=current_stream["id"],
+                            raw_event=event,
+                        )
+                    )
+                    self.clear_message_in_progress(self.active_run["id"])
+
                 logger.info(
                     "TOOL_CALL_START: setting message_in_progress",
                     extra={
