@@ -746,6 +746,39 @@ class LangGraphAgent:
         self, event: Any, state: State
     ) -> AsyncGenerator[str, None]:
         event_type = event.get("event")
+
+        # Log ALL events to trace the full flow
+        node_name = event.get("metadata", {}).get("langgraph_node")
+        if event_type in ["on_chat_model_stream", "on_chain_start", "on_chain_end", "on_tool_start", "on_tool_end"]:
+            logger.info(
+                f"EVENT: {event_type}",
+                extra={
+                    "node": node_name,
+                    "run_id": event.get("run_id"),
+                }
+            )
+
+        # Diagnostic logging: trace all events to debug streaming issues
+        if event_type == LangGraphEventTypes.OnChatModelStream:
+            chunk = event.get("data", {}).get("chunk")
+            tool_chunks = chunk.tool_call_chunks if chunk else []
+            emit_tool_calls = event.get("metadata", {}).get("emit-tool-calls", True)
+            current_stream = self.get_message_in_progress(self.active_run["id"])
+            logger.info(
+                "on_chat_model_stream event",
+                extra={
+                    "node": event.get("metadata", {}).get("langgraph_node"),
+                    "run_id": self.active_run["id"],
+                    "has_tool_calls": bool(tool_chunks),
+                    "tool_name": tool_chunks[0].get("name") if tool_chunks else None,
+                    "tool_id": tool_chunks[0].get("id") if tool_chunks else None,
+                    "has_args": bool(tool_chunks[0].get("args")) if tool_chunks else False,
+                    "emit_tool_calls": emit_tool_calls,
+                    "has_current_stream": bool(current_stream and current_stream.get("id")),
+                    "current_tool_call_id": current_stream.get("tool_call_id") if current_stream else None,
+                }
+            )
+
         if event_type == LangGraphEventTypes.OnChatModelStream:
             should_emit_messages = event["metadata"].get("emit-messages", True)
             should_emit_tool_calls = event["metadata"].get("emit-tool-calls", True)
@@ -782,6 +815,21 @@ class LangGraphAgent:
                 and current_stream.get("tool_call_id")
                 and not tool_call_data
             )
+
+            # Diagnostic logging: trace tool call detection
+            if tool_call_data:
+                logger.debug(
+                    "tool call detection",
+                    extra={
+                        "tool_name": tool_call_data.get("name"),
+                        "tool_id": tool_call_data.get("id"),
+                        "is_start": is_tool_call_start_event,
+                        "is_args": is_tool_call_args_event,
+                        "is_end": is_tool_call_end_event,
+                        "has_current_stream": has_current_stream,
+                        "current_tool_call_id": current_stream.get("tool_call_id") if current_stream else None,
+                    }
+                )
 
             # Track which tool calls have been streamed (for fallback logic)
             if is_tool_call_start_event and tool_call_data.get("id"):
@@ -856,6 +904,13 @@ class LangGraphAgent:
                 )
 
             if is_tool_call_end_event:
+                logger.info(
+                    "TOOL_CALL_END: clearing message_in_progress",
+                    extra={
+                        "run_id": self.active_run["id"],
+                        "tool_call_id": current_stream["tool_call_id"],
+                    }
+                )
                 yield self._dispatch_event(
                     ToolCallEndEvent(
                         type=EventType.TOOL_CALL_END,
@@ -878,6 +933,14 @@ class LangGraphAgent:
                 return
 
             if is_tool_call_start_event and should_emit_tool_calls:
+                logger.info(
+                    "TOOL_CALL_START: setting message_in_progress",
+                    extra={
+                        "run_id": self.active_run["id"],
+                        "tool_call_id": tool_call_data["id"],
+                        "tool_name": tool_call_data["name"],
+                    }
+                )
                 yield self._dispatch_event(
                     ToolCallStartEvent(
                         type=EventType.TOOL_CALL_START,
