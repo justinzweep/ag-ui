@@ -861,8 +861,9 @@ class LangGraphAgent:
             )
 
             if reasoning_data:
-                for event in self.handle_reasoning_event(reasoning_data):
-                    yield event
+                chunk_id = event["data"]["chunk"].id if event["data"]["chunk"] else None
+                for reasoning_event in self.handle_reasoning_event(reasoning_data, chunk_id):
+                    yield reasoning_event
                 return
 
             if (
@@ -1223,7 +1224,7 @@ class LangGraphAgent:
             )
 
     def handle_reasoning_event(
-        self, reasoning_data: LangGraphReasoning
+        self, reasoning_data: LangGraphReasoning, chunk_id: str | None = None
     ) -> Generator[str, Any, str | None]:
         if (
             not reasoning_data
@@ -1277,7 +1278,8 @@ class LangGraphAgent:
             self.active_run["reasoning_process"] = None
 
         if not self.active_run.get("reasoning_process"):
-            reasoning_id = f"{self.active_run['id']}-{reasoning_step_index}"
+            # Use chunk_id (AIMessage ID) if available for consistent anchoring with frontend
+            reasoning_id = chunk_id or f"{self.active_run['id']}-{reasoning_step_index}"
             # Try to extract encrypted content from chunk if available
             encrypted_content = None
             # You can extract encrypted_content from the chunk's additional_kwargs if available
