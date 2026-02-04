@@ -750,7 +750,7 @@ class LangGraphAgent:
         # Log ALL events to trace the full flow
         node_name = event.get("metadata", {}).get("langgraph_node")
         if event_type in ["on_chat_model_stream", "on_chain_start", "on_chain_end", "on_tool_start", "on_tool_end"]:
-            logger.info(
+            logger.debug(
                 f"EVENT: {event_type}",
                 extra={
                     "node": node_name,
@@ -764,7 +764,7 @@ class LangGraphAgent:
             tool_chunks = chunk.tool_call_chunks if chunk else []
             emit_tool_calls = event.get("metadata", {}).get("emit-tool-calls", True)
             current_stream = self.get_message_in_progress(self.active_run["id"])
-            logger.info(
+            logger.debug(
                 "on_chat_model_stream event",
                 extra={
                     "node": event.get("metadata", {}).get("langgraph_node"),
@@ -863,7 +863,6 @@ class LangGraphAgent:
             if reasoning_data:
                 chunk = event["data"]["chunk"]
                 chunk_id = chunk.id if chunk else None
-                print(f"[DEBUG] handle_reasoning_event called - chunk_id: {chunk_id}, chunk type: {type(chunk).__name__ if chunk else None}")
                 for reasoning_event in self.handle_reasoning_event(reasoning_data, chunk_id):
                     yield reasoning_event
                 return
@@ -915,7 +914,7 @@ class LangGraphAgent:
                 )
 
             if is_tool_call_end_event:
-                logger.info(
+                logger.debug(
                     "TOOL_CALL_END: clearing message_in_progress",
                     extra={
                         "run_id": self.active_run["id"],
@@ -955,7 +954,7 @@ class LangGraphAgent:
                     )
                     self.clear_message_in_progress(self.active_run["id"])
 
-                logger.info(
+                logger.debug(
                     "TOOL_CALL_START: setting message_in_progress",
                     extra={
                         "run_id": self.active_run["id"],
@@ -995,7 +994,6 @@ class LangGraphAgent:
 
             if is_message_content_event and should_emit_messages:
                 if not (current_stream and current_stream.get("id")):
-                    print(f"[DEBUG] TEXT_MESSAGE_START - message_id: {event['data']['chunk'].id}")
                     yield self._dispatch_event(
                         TextMessageStartEvent(
                             type=EventType.TEXT_MESSAGE_START,
@@ -1287,8 +1285,6 @@ class LangGraphAgent:
             encrypted_content = None
             # You can extract encrypted_content from the chunk's additional_kwargs if available
             # encrypted_content = chunk.additional_kwargs.get("encrypted_reasoning")
-
-            print(f"[DEBUG] REASONING_START - chunk_id: {chunk_id}, reasoning_id: {reasoning_id}, run_id: {self.active_run['id']}")
 
             yield self._dispatch_event(
                 ReasoningStartEvent(
